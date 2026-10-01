@@ -432,3 +432,6 @@ to authenticated;
 
 -- Live updates when a partner edits a shared profile (Realtime honours RLS).
 alter publication supabase_realtime add table public.profiles;
+
+-- Make the API see the new schema immediately.
+notify pgrst, 'reload schema';

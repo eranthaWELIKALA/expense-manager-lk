@@ -10,7 +10,8 @@
     "test": "vitest run",
     "lint": "eslint .",
     "check": "npm run lint && npm run test && npm run build",
-    "test:db": "bash scripts/test-db.sh"
+    "test:db": "bash scripts/test-db.sh",
+    "db:migrate": "bash scripts/db-migrate.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
