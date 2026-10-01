@@ -35,7 +35,7 @@
 .chipx.v{background:var(--violetS);color:var(--violet)}
 .chipx.a{background:var(--accS);color:var(--acc)}
 .chipx.g{background:var(--paper);color:var(--mute)}
-.ov{position:fixed;inset:0;background:rgba(16,22,36,.5);display:grid;place-items:center;padding:16px;z-index:50}
+.ov{position:fixed;inset:0;background:rgba(16,22,36,.5);display:grid;place-items:center;padding:16px;z-index:50;overflow-y:auto;overscroll-behavior:contain}
 .dlg{background:var(--card);border-radius:15px;max-width:580px;width:100%;max-height:88vh;overflow:auto;
   box-shadow:0 20px 60px rgba(16,22,36,.28)}
 .dlg .h{padding:16px 18px 12px}
@@ -157,3 +157,4 @@
 .loading.compact{padding:18px 12px;font-size:12.5px}
 .split-row{display:grid;grid-template-columns:1fr 140px 28px;gap:8px;align-items:end;margin-bottom:8px}
 .split-row .field{margin-bottom:0}
+.dlg{overscroll-behavior:contain}

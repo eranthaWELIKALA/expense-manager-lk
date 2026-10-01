@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Field, TextInput } from "./Form";
+import { useScrollLock } from "../../hooks/useScrollLock";
 
 /** Accessible dialog: Escape closes, focus moves in and is restored on close. */
 export function Modal({ title, description, onClose, children, footer, size = "md" }) {
@@ -8,6 +9,7 @@ export function Modal({ title, description, onClose, children, footer, size = "m
   const ref = useRef(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  useScrollLock();
 
   // Mount-only: callers often pass an inline onClose, which must not re-steal focus.
   useEffect(() => {
