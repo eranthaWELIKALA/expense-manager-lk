@@ -5,8 +5,8 @@ insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data) value
  ('00000000-0000-0000-0000-00000000000b','Partner@X.com', now(), '{"display_name":"Pat"}'),
  ('00000000-0000-0000-0000-00000000000c','stranger@x.com', now(), '{}'),
  ('00000000-0000-0000-0000-00000000000d','unverified@x.com', null, '{}');
-select count(*) = 4 as accounts_created_by_trigger from public.accounts \gset
-\if :accounts_created_by_trigger \else \echo FAIL accounts trigger \quit \endif
+select count(*) = 5 and bool_or(email = 'early@x.com') as accounts_created_by_trigger from public.accounts \gset
+\if :accounts_created_by_trigger \echo PASS accounts created by trigger and backfill \else \echo FAIL accounts trigger \quit \endif
 
 create or replace function pg_temp.expect_error(sql text, pattern text) returns void language plpgsql as $$
 begin

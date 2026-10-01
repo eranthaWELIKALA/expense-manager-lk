@@ -17,8 +17,16 @@ const KNOWN = {
   email_not_confirmed: [ErrorCode.AUTH, "Confirm your email address before accepting invitations."],
 };
 
+// Table/function missing from PostgREST's schema cache: the migration hasn't been applied.
+const SCHEMA_MISSING = new Set(["PGRST205", "PGRST202", "42P01", "42883"]);
+
 function toAppError(error) {
+  // Error metadata only (code/message) — never request or plan data.
+  if (import.meta.env.DEV) console.error("[supabase]", error?.code, error?.message);
   const msg = String(error?.message || "");
+  if (SCHEMA_MISSING.has(error?.code)) {
+    return new AppError(ErrorCode.UNKNOWN, "The database isn't set up yet. Apply supabase/migrations in the Supabase SQL editor, then reload.", error);
+  }
   const hit = Object.keys(KNOWN).find((k) => msg.includes(k));
   if (hit) return new AppError(KNOWN[hit][0], KNOWN[hit][1], error);
   if (error?.code === "PGRST116") return new AppError(ErrorCode.NOT_FOUND, KNOWN.not_found[1], error);

@@ -9,3 +9,5 @@ grant execute on function auth.uid() to anon, authenticated;
 alter default privileges in schema public grant all on tables to anon, authenticated;
 alter default privileges in schema public grant all on functions to anon, authenticated;
 create publication supabase_realtime;
+-- A user who signed up before the migration ran (must be backfilled).
+insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-0000000000ee', 'Early@X.com', now());

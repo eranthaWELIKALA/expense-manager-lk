@@ -154,6 +154,12 @@ end $$;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- Users who signed up before this migration ran have no account row yet.
+insert into public.accounts (id, email, display_name)
+select id, lower(email), coalesce(left(btrim(raw_user_meta_data ->> 'display_name'), 80), '')
+  from auth.users
+on conflict (id) do nothing;
+
 create function public.handle_user_email_change() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
