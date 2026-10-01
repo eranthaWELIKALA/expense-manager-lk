@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { Badge, Panel, SectionHeader, StatCard } from "../../components/ui";
 import { useProfile } from "../../contexts/ProfileContext";
+import { useToast } from "../../contexts/ToastContext";
 import { useViewMonth } from "../../hooks/useViewMonth";
 import {
-  computeMonth, fmt, fmtK, mShort, nextM, monthRail,
-  setOverride, removeLine, addOneOff, openMonth, rollInto,
+  computeMonth, fmt, fmtK, mLabel, mShort, nextM, monthRail,
+  setOverride, removeLine, addOneOff, addItem, openMonth, rollInto,
 } from "../../domain";
+import { ExpenseModal } from "../editors/ExpenseModal";
 import { MonthNav } from "./MonthNav";
 import { MoneyMap } from "./MoneyMap";
 import { Ledger } from "./Ledger";
@@ -16,6 +18,8 @@ export default function MonthPage() {
   const { data: plan, update, canEdit } = useProfile();
   const [mk, setMonth] = useViewMonth();
   const [rolling, setRolling] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const toast = useToast();
 
   const month = useMemo(() => computeMonth(plan, mk), [plan, mk]);
   const pills = useMemo(() => monthRail(plan, mk), [plan, mk]);
@@ -27,9 +31,25 @@ export default function MonthPage() {
 
   const actions = canEdit ? {
     set: (key, field, value) => update((d) => setOverride(d, mk, key, field, value)),
-    remove: (key) => update((d) => removeLine(d, mk, key)),
+    remove: (key) => {
+      const line = month.ls.find((l) => l.key === key);
+      update((d) => removeLine(d, mk, key));
+      toast.info(`“${line ? line.label : "Item"}” removed from ${mLabel(mk)}.`);
+    },
   } : null;
-  const addTo = (kind, targetId) => (name, amount) => update((d) => addOneOff(d, mk, { kind, targetId, name, amount }));
+  const saveExpense = ({ type, item }) => {
+    if (type === "once") {
+      update((d) => addOneOff(d, mk, item));
+      toast.success(`“${item.name}” added to ${mLabel(mk)}.`);
+    } else if (type === "monthly") {
+      update((d) => addItem(d, "templates", item));
+      toast.success(`“${item.name}” added to every month.`);
+    } else {
+      update((d) => addItem(d, "installments", item));
+      toast.success(`Installment “${item.name}” added from ${mLabel(item.startMonth)}.`);
+    }
+    setAdding(false);
+  };
 
   const bankName = (id) => (plan.banks.find((b) => b.id === id) || {}).name;
   const nextLabel = mShort(nextM(mk));
@@ -38,7 +58,7 @@ export default function MonthPage() {
 
   return (
     <>
-      <MonthNav value={mk} items={pills} openedMonths={plan.months} onSelect={selectMonth} onMoveNext={() => setRolling(true)} canEdit={canEdit} />
+      <MonthNav value={mk} items={pills} openedMonths={plan.months} onSelect={selectMonth} onMoveNext={() => setRolling(true)} onAddExpense={() => setAdding(true)} canEdit={canEdit} />
 
       <div className="stats">
         <StatCard label="Salaries in" value={fmt(month.earned, 0)} sub={`${activeIncomes} salaries across ${plan.banks.length} banks`} />
@@ -66,17 +86,17 @@ export default function MonthPage() {
         <div className="stack">
           <SectionHeader title="Bank accounts" />
           {month.banks.map((B) => (
-            <Ledger key={B.o.id} ledger={B} kind="bank" note={B.o.note} actions={actions} onAdd={addTo("bank", B.o.id)} />
+            <Ledger key={B.o.id} ledger={B} kind="bank" note={B.o.note} actions={actions} />
           ))}
           <SectionHeader title="Cash" />
           {month.wallets.map((W) => (
-            <Ledger key={W.o.id} ledger={W} kind="cash" note={"Withdrawn from " + (bankName(W.o.from) || "—")} actions={actions} onAdd={addTo("cash", W.o.id)} />
+            <Ledger key={W.o.id} ledger={W} kind="cash" note={"Withdrawn from " + (bankName(W.o.from) || "—")} actions={actions} />
           ))}
         </div>
         <div className="stack">
           <SectionHeader title="Cards" />
           {month.cards.map((C) => (
-            <CardPanel key={C.o.id} card={C} bankName={bankName(C.o.bank)} nextLabel={nextLabel} actions={actions} onAdd={addTo("card", C.o.id)} />
+            <CardPanel key={C.o.id} card={C} bankName={bankName(C.o.bank)} nextLabel={nextLabel} actions={actions} />
           ))}
         </div>
       </div>
@@ -87,8 +107,11 @@ export default function MonthPage() {
             update((d) => rollInto(d, mk, adj));
             setMonth(nextM(mk));
             setRolling(false);
+            toast.success(`Moved into ${mLabel(nextM(mk))}. Balances carried over.`);
           }} />
       )}
+
+      {adding && <ExpenseModal plan={plan} monthKey={mk} onSave={saveExpense} onClose={() => setAdding(false)} />}
     </>
   );
 }

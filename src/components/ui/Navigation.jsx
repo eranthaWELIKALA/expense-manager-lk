@@ -53,5 +53,19 @@ export function MenuItem({ as: As = "button", children, className, ...rest }) {
   return <As role="menuitem" data-close className={cx("menu-item", className)} {...rest}>{children}</As>;
 }
 
+/** Radio group styled as a segmented control. options: [{value, label, hint?}] */
+export function Segmented({ options, value, onChange, label }) {
+  return (
+    <div className="seg" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value}
+          className={cx("seg-opt", value === o.value && "on")} onClick={() => onChange(o.value)}>
+          <b>{o.label}</b>{o.hint && <small>{o.hint}</small>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export const MenuDivider = () => <div className="menu-div" role="separator" />;
 export const MenuLabel = ({ children }) => <div className="menu-lbl">{children}</div>;

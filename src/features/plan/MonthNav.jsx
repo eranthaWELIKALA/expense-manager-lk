@@ -3,7 +3,7 @@ import { Button } from "../../components/ui";
 import { mLabel, mShort, nextM, prevM } from "../../domain";
 
 /** Month rail: prev/next, a pill per opened month, and the roll-over action. */
-export function MonthNav({ value, items, openedMonths, onSelect, onMoveNext, canEdit }) {
+export function MonthNav({ value, items, openedMonths, onSelect, onMoveNext, onAddExpense, canEdit }) {
   return (
     <div className="mrail">
       <button type="button" className="mnav" onClick={() => onSelect(prevM(value))} aria-label="Previous month">‹</button>
@@ -22,7 +22,8 @@ export function MonthNav({ value, items, openedMonths, onSelect, onMoveNext, can
           </button>
         ))}
       </div>
-      {canEdit && <Button variant="primary" onClick={onMoveNext}>Move into {mShort(nextM(value))} →</Button>}
+      {canEdit && <Button variant="primary" onClick={onAddExpense}>+ Add expense</Button>}
+      {canEdit && <Button onClick={onMoveNext}>Move into {mShort(nextM(value))} →</Button>}
     </div>
   );
 }

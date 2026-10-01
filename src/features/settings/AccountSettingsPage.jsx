@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Button, Field, FormError, Select, TextInput } from "../../components/ui";
+import { Button, Field, Select, TextInput } from "../../components/ui";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useWorkspace } from "../../contexts/WorkspaceContext";
@@ -14,7 +14,7 @@ function ProfileDetailsForm() {
   const toast = useToast();
   const [displayName, setDisplayName] = useState(account.displayName);
   const [defaultCurrency, setDefaultCurrency] = useState(account.defaultCurrency);
-  const { run, pending, error } = useAsyncAction(async () => {
+  const { run, pending } = useAsyncAction(async () => {
     await backend.account.update({ displayName: displayName.trim(), defaultCurrency });
     await refreshAccount();
   });
@@ -29,7 +29,6 @@ function ProfileDetailsForm() {
 
   return (
     <form onSubmit={submit} noValidate className="stack-form">
-      <FormError>{error}</FormError>
       <Field label="Your name" error={nameErr} hint="Shown to partners you share profiles with.">
         <TextInput value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={80} autoComplete="name" />
       </Field>

@@ -129,3 +129,15 @@ describe("plan helpers", () => {
     expect(n.active).toBe("2026-02");
   });
 });
+
+import { usageOf, viaLabel } from "./plan";
+describe("usageOf / viaLabel", () => {
+  it("counts references and labels payment methods", () => {
+    const d = plan();
+    expect(usageOf(d, "banks", "b1")).toBe(5); // income, wallet, card, rent, transfer source
+    expect(usageOf(d, "banks", "b2")).toBe(1); // move target
+    expect(usageOf(d, "cards", "c1")).toBe(2);
+    expect(usageOf(d, "wallets", "w1")).toBe(1);
+    expect(viaLabel(d, { kind: "card", id: "c1" })).toBe("Card · Card");
+  });
+});

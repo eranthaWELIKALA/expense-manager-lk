@@ -111,3 +111,7 @@
 .crry input{width:104px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;text-align:right;
   font-family:'JetBrains Mono';font-variant-numeric:tabular-nums;font-size:12.5px}
 
+.page-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin-bottom:12px}
+.ins-act{display:inline-flex;gap:4px;margin-left:4px}
+.items{padding:2px 14px 4px}
+.item-amt{font-weight:600;font-size:13px}

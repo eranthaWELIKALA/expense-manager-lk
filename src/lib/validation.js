@@ -23,3 +23,21 @@ export const CURRENCIES = ["LKR", "USD", "EUR", "GBP", "AUD", "CAD", "INR", "SGD
 /** Only allow same-origin relative paths as post-login redirects (prevents open redirects). */
 export const safeNext = (next, fallback = "/") =>
   typeof next === "string" && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : fallback;
+
+/**
+ * Validate a typed amount. Returns "" when valid.
+ * opts: {required=true, positive=false (must be > 0), integer=false, max}
+ */
+export const validateAmount = (raw, { required = true, positive = false, integer = false, max = 1e12, label = "Amount" } = {}) => {
+  const s = String(raw ?? "").replace(/,/g, "").trim();
+  if (s === "") return required ? `${label} is required.` : "";
+  const v = Number(s);
+  if (!isFinite(v)) return `${label} must be a number.`;
+  if (v < 0) return `${label} can't be negative.`;
+  if (positive && v === 0) return `${label} must be more than zero.`;
+  if (integer && !Number.isInteger(v)) return `${label} must be a whole number.`;
+  if (v > max) return `${label} is too large.`;
+  return "";
+};
+
+export const validateMonth = (v) => (/^\d{4}-(0[1-9]|1[0-2])$/.test(String(v)) ? "" : "Choose a month.");

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { Badge, Banner, Button, ConfirmDialog, EmptyState, Field, FormError, Select, TextInput } from "../../components/ui";
+import { Badge, Button, ConfirmDialog, EmptyState, Field, LoadingScreen, Select, TextInput } from "../../components/ui";
 import { useToast } from "../../contexts/ToastContext";
 import { useWorkspace } from "../../contexts/WorkspaceContext";
 import { useAsyncAction } from "../../hooks/useAsyncAction";
@@ -17,7 +17,7 @@ function GeneralForm({ profile, onSaved }) {
   const toast = useToast();
   const [name, setName] = useState(profile.name);
   const [currency, setCurrency] = useState(profile.currency);
-  const { run, pending, error } = useAsyncAction(() => backend.profiles.updateMeta(profile.id, { name: name.trim(), currency }));
+  const { run, pending } = useAsyncAction(() => backend.profiles.updateMeta(profile.id, { name: name.trim(), currency }));
   const nameErr = validateName(name, "Profile name");
   const dirty = name.trim() !== profile.name || currency !== profile.currency;
 
@@ -29,7 +29,6 @@ function GeneralForm({ profile, onSaved }) {
 
   return (
     <form onSubmit={submit} noValidate className="stack-form">
-      <FormError>{error}</FormError>
       <Field label="Name" error={nameErr}>
         <TextInput value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
       </Field>
@@ -124,13 +123,12 @@ const ACTION_TEXT = {
 };
 
 function Activity({ profileId }) {
+  const toast = useToast();
   const [rows, setRows] = useState(null);
-  const [error, setError] = useState("");
   useEffect(() => {
-    backend.sharing.activity(profileId).then(setRows, (e) => setError(errorMessage(e)));
-  }, [profileId]);
-  if (error) return <Banner tone="error">{error}</Banner>;
-  if (!rows) return <EmptyState>Loading…</EmptyState>;
+    backend.sharing.activity(profileId).then(setRows, (e) => { toast.error(errorMessage(e)); setRows([]); });
+  }, [profileId, toast]);
+  if (!rows) return <LoadingScreen compact label="Loading activity…" />;
   if (rows.length === 0) return <EmptyState>No activity yet.</EmptyState>;
   return (
     <ul className="activity">
@@ -193,7 +191,6 @@ export default function ProfileSettingsPage() {
           ? "Invite partners to work on this profile. Editors can change the plan; viewers can only look."
           : "Only the owner can invite people or change access."}
       >
-        {sharing.error && <Banner tone="error">{sharing.error}</Banner>}
         {isOwner && <InviteForm profileId={profile.id} onInvited={sharing.refresh} />}
         {isOwner && <PendingInvitations invitations={sharing.invitations} onChange={sharing.refresh} />}
         <MembersList profileId={profile.id} members={sharing.members} isOwner={isOwner} onChange={sharing.refresh} />

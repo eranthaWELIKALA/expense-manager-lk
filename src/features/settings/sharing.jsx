@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Avatar, Badge, Button, ConfirmDialog, EmptyState, Field, FormError, Select, TextInput } from "../../components/ui";
+import { Avatar, Badge, Button, ConfirmDialog, Field, LoadingScreen, Select, TextInput } from "../../components/ui";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useAsyncAction } from "../../hooks/useAsyncAction";
@@ -11,7 +11,7 @@ import { validateEmail } from "../../lib/validation";
 export function useSharing(profileId, isOwner) {
   const [members, setMembers] = useState(null);
   const [invitations, setInvitations] = useState([]);
-  const [error, setError] = useState("");
+  const toast = useToast();
 
   const refresh = useCallback(async () => {
     try {
@@ -19,14 +19,15 @@ export function useSharing(profileId, isOwner) {
         backend.sharing.members(profileId),
         isOwner ? backend.sharing.invitations(profileId) : Promise.resolve([]),
       ]);
-      setMembers(m); setInvitations(i); setError("");
+      setMembers(m); setInvitations(i);
     } catch (e) {
-      setError(errorMessage(e));
+      toast.error(errorMessage(e));
+      setMembers((cur) => cur || []);
     }
-  }, [profileId, isOwner]);
+  }, [profileId, isOwner, toast]);
 
   useEffect(() => { refresh(); }, [refresh]);
-  return { members, invitations, error, refresh };
+  return { members, invitations, refresh };
 }
 
 async function copy(text) {
@@ -38,7 +39,7 @@ export function InviteForm({ profileId, onInvited }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("editor");
   const [touched, setTouched] = useState(false);
-  const { run, pending, error } = useAsyncAction((p) => backend.sharing.invite(profileId, p));
+  const { run, pending } = useAsyncAction((p) => backend.sharing.invite(profileId, p));
   const emailErr = touched ? validateEmail(email) : "";
 
   const submit = async (e) => {
@@ -55,7 +56,6 @@ export function InviteForm({ profileId, onInvited }) {
 
   return (
     <form className="invite-form" onSubmit={submit} noValidate>
-      <FormError>{error}</FormError>
       <div className="invite-row">
         <Field label="Partner's email" error={emailErr} className="grow">
           <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" autoComplete="off" />
@@ -116,7 +116,7 @@ export function MembersList({ profileId, members, isOwner, onChange }) {
   const toast = useToast();
   const [removing, setRemoving] = useState(null);
 
-  if (!members) return <EmptyState>Loading members…</EmptyState>;
+  if (!members) return <LoadingScreen compact label="Loading members…" />;
 
   const changeRole = async (m, role) => {
     try { await backend.sharing.setRole(profileId, m.userId, role); toast.success(`${m.displayName || m.email} is now ${roleLabel(role).toLowerCase()}.`); onChange(); }

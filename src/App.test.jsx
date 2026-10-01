@@ -54,16 +54,59 @@ describe("App", () => {
     await user.type(rent, "85000", { skipClick: true });
     await waitFor(() => expect(screen.getByText("Saved")).toBeTruthy(), { timeout: 3000 });
 
-    // other tabs render
+    // add expense: validation, then a one-time cash spend
+    await user.click(screen.getByRole("button", { name: "+ Add expense" }));
+    let dlg = await screen.findByRole("dialog", { name: "Add expense" });
+    await user.click(within(dlg).getByRole("button", { name: "Add expense" }));
+    expect(within(dlg).getByText("Name is required.")).toBeTruthy();
+    await user.type(within(dlg).getByLabelText("What for"), "Doctor");
+    await user.selectOptions(within(dlg).getByLabelText("Pay with"), within(dlg).getByRole("option", { name: "Daily cash" }));
+    await user.type(within(dlg).getByLabelText("Amount"), "3500");
+    await user.click(within(dlg).getByRole("button", { name: "Add expense" }));
+    expect(await screen.findByText(/“Doctor” added to/)).toBeTruthy();
+    expect(screen.getByLabelText("Doctor planned").value).toBe("3,500");
+
+    // add expense: installment on a card
+    await user.click(screen.getByRole("button", { name: "+ Add expense" }));
+    dlg = await screen.findByRole("dialog", { name: "Add expense" });
+    await user.click(within(dlg).getByRole("radio", { name: /installment/i }));
+    await user.type(within(dlg).getByLabelText("What for"), "Phone");
+    await user.type(within(dlg).getByLabelText("Total price"), "120000");
+    await user.clear(within(dlg).getByLabelText("Months"));
+    await user.type(within(dlg).getByLabelText("Months"), "6");
+    expect(within(dlg).getByText(/20,000 a month for 6 months/)).toBeTruthy();
+    await user.click(within(dlg).getByRole("button", { name: "Add expense" }));
+    expect(await screen.findByText(/Installment “Phone” added/)).toBeTruthy();
+    expect(screen.getByText("Phone")).toBeTruthy();
+
+    // commitments: edit an installment in a modal
     await user.click(screen.getByRole("link", { name: "Commitments" }));
-    expect(await screen.findByText("Laptop")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "+ Add installment" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Edit Phone" }));
+    dlg = await screen.findByRole("dialog", { name: "Edit installment" });
+    const nm = within(dlg).getByLabelText("Name");
+    await user.clear(nm);
+    await user.type(nm, "Phone + case");
+    await user.click(within(dlg).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/“Phone \+ case” updated/)).toBeTruthy();
+
+    // setup: add a bank via modal, then delete it with confirmation
     await user.click(screen.getByRole("link", { name: "Setup" }));
     expect(await screen.findByRole("heading", { name: "Bank accounts" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "+ Add bank account" }));
+    dlg = await screen.findByRole("dialog", { name: "Add bank account" });
+    await user.type(within(dlg).getByLabelText("Name"), "Test Bank");
+    await user.click(within(dlg).getByRole("button", { name: "Add bank" }));
+    expect(await screen.findByText(/Bank account “Test Bank” added/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Delete Test Bank" }));
+    await user.click(within(await screen.findByRole("dialog", { name: /Delete “Test Bank”/ })).getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText(/“Test Bank” deleted/)).toBeTruthy();
+    expect(screen.queryByText("Test Bank")).toBeNull();
 
     // second profile under the same account
     await user.click(screen.getByRole("button", { name: /profile household/i }));
     await user.click(screen.getByRole("menuitem", { name: /new profile/i }));
-    const dlg = await screen.findByRole("dialog");
+    dlg = await screen.findByRole("dialog");
     await user.type(within(dlg).getByLabelText("Profile name"), "Business");
     await user.click(within(dlg).getByRole("button", { name: /create profile/i }));
     expect(await screen.findByRole("heading", { level: 1, name: "Business" })).toBeTruthy();

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Button, Field, FormError, Select, TextInput } from "../../components/ui";
+import { Button, Field, Select, TextInput } from "../../components/ui";
 import { useWorkspace } from "../../contexts/WorkspaceContext";
 import { useAsyncAction } from "../../hooks/useAsyncAction";
 import { backend } from "../../services/backend";
@@ -13,7 +13,7 @@ export function CreateProfileForm({ onCreated, onCancel, submitLabel = "Create p
   const [currency, setCurrency] = useState(account?.defaultCurrency || "LKR");
   const [template, setTemplate] = useState("blank");
   const [touched, setTouched] = useState(false);
-  const { run, pending, error } = useAsyncAction(async () => {
+  const { run, pending } = useAsyncAction(async () => {
     const tpl = PLAN_TEMPLATES.find((t) => t.id === template) || PLAN_TEMPLATES[0];
     const id = await backend.profiles.create({ name: name.trim(), currency, data: tpl.build(currentMonthKey()) });
     await refreshProfiles();
@@ -31,7 +31,6 @@ export function CreateProfileForm({ onCreated, onCancel, submitLabel = "Create p
 
   return (
     <form onSubmit={submit} noValidate className="stack-form">
-      <FormError>{error}</FormError>
       <Field label="Profile name" error={touched ? nameErr : ""} hint="e.g. Household, Business, Parents">
         <TextInput value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoFocus />
       </Field>

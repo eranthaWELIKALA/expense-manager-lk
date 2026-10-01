@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Banner, Button, Field, FormError, TextInput } from "../../components/ui";
+import { Banner, Button, Field, TextInput } from "../../components/ui";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAsyncAction } from "../../hooks/useAsyncAction";
 import { PASSWORD_MIN, validateEmail, validateName, validatePassword } from "../../lib/validation";
@@ -11,7 +11,7 @@ export default function SignUpPage() {
   const [form, setForm] = useState({ displayName: "", email: "", password: "", confirm: "" });
   const [touched, setTouched] = useState(false);
   const [sentTo, setSentTo] = useState("");
-  const { run, pending, error } = useAsyncAction(signUp);
+  const { run, pending } = useAsyncAction(signUp);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const errors = {
@@ -44,7 +44,6 @@ export default function SignUpPage() {
   return (
     <form onSubmit={submit} noValidate>
       <h1 className="auth-title">Create your account</h1>
-      <FormError>{error}</FormError>
       <Field label="Your name" error={show("displayName")}>
         <TextInput autoComplete="name" value={form.displayName} onChange={set("displayName")} maxLength={80} autoFocus />
       </Field>

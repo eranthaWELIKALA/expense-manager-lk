@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { Banner, Button, Field, FormError, LoadingScreen, TextInput } from "../../components/ui";
+import { Banner, Button, Field, LoadingScreen, TextInput } from "../../components/ui";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useAsyncAction } from "../../hooks/useAsyncAction";
@@ -12,7 +12,7 @@ export function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [touched, setTouched] = useState(false);
   const [sent, setSent] = useState(false);
-  const { run, pending, error } = useAsyncAction(requestPasswordReset);
+  const { run, pending } = useAsyncAction(requestPasswordReset);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -37,7 +37,6 @@ export function ForgotPasswordPage() {
   return (
     <form onSubmit={submit} noValidate>
       <h1 className="auth-title">Reset your password</h1>
-      <FormError>{error}</FormError>
       <Field label="Email" error={touched ? validateEmail(email) : ""}>
         <TextInput type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
       </Field>
@@ -53,7 +52,7 @@ export function NewPasswordForm({ onDone, submitLabel = "Update password" }) {
   const [pw, setPw] = useState("");
   const [confirm, setConfirm] = useState("");
   const [touched, setTouched] = useState(false);
-  const { run, pending, error } = useAsyncAction(updatePassword);
+  const { run, pending } = useAsyncAction(updatePassword);
 
   const pwErr = validatePassword(pw);
   const confirmErr = confirm !== pw ? "Passwords don't match." : "";
@@ -67,7 +66,6 @@ export function NewPasswordForm({ onDone, submitLabel = "Update password" }) {
 
   return (
     <form onSubmit={submit} noValidate>
-      <FormError>{error}</FormError>
       <Field label="New password" error={touched ? pwErr : ""} hint={`At least ${PASSWORD_MIN} characters, with a letter and a number.`}>
         <TextInput type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} />
       </Field>

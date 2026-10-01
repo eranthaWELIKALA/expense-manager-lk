@@ -84,8 +84,8 @@ export function Spinner({ label = "Loading…" }) {
   return <span className="spin" role="status" aria-label={label} />;
 }
 
-export function LoadingScreen({ label = "Loading…" }) {
-  return <div className="loading"><Spinner label={label} /><span>{label}</span></div>;
+export function LoadingScreen({ label = "Loading…", compact = false }) {
+  return <div className={cx("loading", compact && "compact")}><Spinner label={label} /><span>{label}</span></div>;
 }
 
 /** Initials avatar. */

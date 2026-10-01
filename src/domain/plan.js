@@ -179,3 +179,26 @@ export function monthRail(d, viewing) {
   s.add(viewing); s.add(nextM(viewing));
   return [...s].sort();
 }
+
+/** How many other items reference a bank / cash pot / card (to warn before deleting it). */
+export function usageOf(d, coll, id) {
+  const via = (kind) => (x) => x.via && x.via.kind === kind && x.via.id === id;
+  if (coll === "banks") {
+    return d.incomes.filter((i) => (i.splits || []).some((s) => s.bank === id)).length
+      + d.wallets.filter((w) => w.from === id).length
+      + d.cards.filter((c) => c.bank === id).length
+      + d.templates.filter((t) => via("bank")(t) || t.to === id).length
+      + d.installments.filter(via("bank")).length;
+  }
+  if (coll === "wallets") return d.templates.filter(via("cash")).length + d.installments.filter(via("cash")).length;
+  if (coll === "cards") return d.templates.filter(via("card")).length + d.installments.filter(via("card")).length;
+  return 0;
+}
+
+/** Human label for a payment method ("Card · Everyday card"). */
+export function viaLabel(d, via) {
+  if (!via) return "—";
+  const list = via.kind === "card" ? d.cards : via.kind === "cash" ? d.wallets : d.banks;
+  const name = (list.find((x) => x.id === via.id) || {}).name || "missing";
+  return ({ bank: "Bank", cash: "Cash", card: "Card" })[via.kind] + " · " + name;
+}

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Button, Field, FormError, TextInput } from "../../components/ui";
+import { Button, Field, TextInput } from "../../components/ui";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAsyncAction } from "../../hooks/useAsyncAction";
 import { validateEmail } from "../../lib/validation";
@@ -11,7 +11,7 @@ export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [touched, setTouched] = useState(false);
-  const { run, pending, error } = useAsyncAction(signIn);
+  const { run, pending } = useAsyncAction(signIn);
 
   const emailErr = touched ? validateEmail(email) : "";
   const keepNext = params.get("next") ? "?next=" + encodeURIComponent(params.get("next")) : "";
@@ -26,7 +26,6 @@ export default function SignInPage() {
   return (
     <form onSubmit={submit} noValidate>
       <h1 className="auth-title">Sign in</h1>
-      <FormError>{error}</FormError>
       <Field label="Email" error={emailErr}>
         <TextInput type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
       </Field>

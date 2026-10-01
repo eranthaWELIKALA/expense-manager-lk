@@ -39,19 +39,6 @@ export function AmountInput({ value, onChange, className, placeholder = "—", r
   );
 }
 
-/** Numeric config field that always holds a number (blank → fallback). */
-export function NumberInput({ value, onChange, fallback = 0, className, ...rest }) {
-  return (
-    <input
-      className={cx("n", className)}
-      value={value ?? ""}
-      inputMode="decimal"
-      onFocus={(e) => e.target.select()}
-      onChange={(e) => { const v = parseAmount(e.target.value); onChange(v === null ? fallback : v); }}
-      {...rest}
-    />
-  );
-}
 
 /** Round "settled" tick box. */
 export function Checkbox({ checked, onChange, label = "Settled", disabled }) {
@@ -67,25 +54,5 @@ export function Checkbox({ checked, onChange, label = "Settled", disabled }) {
     >
       {checked ? "✓" : ""}
     </button>
-  );
-}
-
-/** Name + amount inline adder used at the foot of ledgers. */
-export function AddRow({ onAdd, placeholder = "Add a one-off item" }) {
-  const [name, setName] = useState("");
-  const [amount, setAmount] = useState("");
-  const go = () => {
-    const n = name.trim();
-    if (!n) return;
-    onAdd(n, parseAmount(amount) ?? 0);
-    setName(""); setAmount("");
-  };
-  const onKey = (e) => e.key === "Enter" && go();
-  return (
-    <div className="add">
-      <input value={name} placeholder={placeholder} maxLength={120} aria-label="Item name" onChange={(e) => setName(e.target.value)} onKeyDown={onKey} />
-      <input className="a" value={amount} placeholder="0" inputMode="decimal" aria-label="Amount" onChange={(e) => setAmount(e.target.value)} onKeyDown={onKey} />
-      <button type="button" className="btn sm" onClick={go}>Add</button>
-    </div>
   );
 }

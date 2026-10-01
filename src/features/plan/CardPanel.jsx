@@ -1,10 +1,10 @@
 import React from "react";
-import { AddRow, Badge, EmptyState, Panel } from "../../components/ui";
+import { Badge, EmptyState, Panel } from "../../components/ui";
 import { fmt } from "../../domain";
 import { LineHeader, LineRow } from "./LineRow";
 
 /** A credit card: this month's charges, billed to a bank next month. */
-export function CardPanel({ card, bankName, nextLabel, actions, onAdd }) {
+export function CardPanel({ card, bankName, nextLabel, actions }) {
   const over = card.actual > card.plan + 0.005 && card.actual > 0;
   const noteSuffix = card.o.note ? " · " + card.o.note : "";
   return (
@@ -21,7 +21,6 @@ export function CardPanel({ card, bankName, nextLabel, actions, onAdd }) {
       {card.rows.map((r) => (
         <LineRow key={r.key} line={r} showBalance={false} actions={actions} lockedHint="Set by the installment" />
       ))}
-      {actions && <AddRow onAdd={onAdd} placeholder="Add a charge" />}
     </Panel>
   );
 }

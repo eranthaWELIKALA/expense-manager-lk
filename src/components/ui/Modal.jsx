@@ -34,6 +34,36 @@ export function Modal({ title, description, onClose, children, footer, size = "m
 }
 
 /**
+ * Modal that wraps a form. Footer buttons live outside the <form> element and
+ * submit it via the `form` attribute, so Enter in any field submits too.
+ * `onDelete` adds a left-aligned destructive action (for edit dialogs).
+ */
+export function FormModal({ title, description, submitLabel = "Save", onSubmit, onClose, onDelete, deleteLabel = "Delete", children, size }) {
+  const formId = useId();
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try { await onSubmit(); } finally { setBusy(false); }
+  };
+  return (
+    <Modal
+      title={title}
+      description={description}
+      onClose={onClose}
+      size={size}
+      footer={<>
+        {onDelete && <Button variant="ghost" className="dlg-del" onClick={onDelete}>{deleteLabel}</Button>}
+        <Button onClick={onClose}>Cancel</Button>
+        <Button type="submit" form={formId} variant="primary" loading={busy}>{submitLabel}</Button>
+      </>}
+    >
+      <form id={formId} onSubmit={submit} noValidate className="dlg-form">{children}</form>
+    </Modal>
+  );
+}
+
+/**
  * Confirmation for destructive actions. Pass `confirmText` to require typing
  * a phrase (e.g. the profile name) before the button unlocks.
  */

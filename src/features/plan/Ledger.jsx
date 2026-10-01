@@ -1,10 +1,10 @@
 import React from "react";
-import { AddRow, Badge, EmptyState, Panel } from "../../components/ui";
+import { Badge, EmptyState, Panel } from "../../components/ui";
 import { fmt } from "../../domain";
 import { LineHeader, LineRow } from "./LineRow";
 
 /** A bank or cash ledger with running balance. */
-export function Ledger({ ledger, kind, note, actions, onAdd }) {
+export function Ledger({ ledger, kind, note, actions }) {
   const base = Math.abs(ledger.opening) || 1;
   const short = ledger.closing < -0.005;
   return (
@@ -25,7 +25,6 @@ export function Ledger({ ledger, kind, note, actions, onAdd }) {
       {ledger.rows.map((r) => (
         <LineRow key={r.key} line={r} balanceBase={base} actions={actions} lockedHint="Comes from elsewhere — change it at the source" />
       ))}
-      {actions && <AddRow onAdd={onAdd} placeholder={kind === "cash" ? "Add a cash spend" : "Add a payment"} />}
     </Panel>
   );
 }
