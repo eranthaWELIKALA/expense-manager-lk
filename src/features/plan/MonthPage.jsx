@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Badge, Panel, SectionHeader, StatCard } from "../../components/ui";
 import { useProfile } from "../../contexts/ProfileContext";
 import { useToast } from "../../contexts/ToastContext";
+import { useConfirm } from "../../contexts/ConfirmContext";
 import { useViewMonth } from "../../hooks/useViewMonth";
 import {
   computeMonth, fmt, fmtK, mLabel, mShort, nextM, monthRail,
@@ -20,6 +21,7 @@ export default function MonthPage() {
   const [rolling, setRolling] = useState(false);
   const [adding, setAdding] = useState(false);
   const toast = useToast();
+  const confirm = useConfirm();
 
   const month = useMemo(() => computeMonth(plan, mk), [plan, mk]);
   const pills = useMemo(() => monthRail(plan, mk), [plan, mk]);
@@ -31,8 +33,18 @@ export default function MonthPage() {
 
   const actions = canEdit ? {
     set: (key, field, value) => update((d) => setOverride(d, mk, key, field, value)),
-    remove: (key) => {
+    remove: async (key) => {
       const line = month.ls.find((l) => l.key === key);
+      const oneOff = key.startsWith("x:");
+      const ok = await confirm({
+        danger: true,
+        title: `Remove “${line ? line.label : "this item"}” from ${mLabel(mk)}?`,
+        message: oneOff
+          ? "This one-time payment will be deleted, and the balances for this month and later months will be recalculated."
+          : `It's hidden in ${mLabel(mk)} only. Other months keep it — change or delete it in Setup to affect every month.`,
+        confirmLabel: oneOff ? "Delete payment" : "Remove from month",
+      });
+      if (!ok) return;
       update((d) => removeLine(d, mk, key));
       toast.info(`“${line ? line.label : "Item"}” removed from ${mLabel(mk)}.`);
     },

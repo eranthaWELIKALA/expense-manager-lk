@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Avatar, Badge, Button, ConfirmDialog, Field, LoadingScreen, Select, TextInput } from "../../components/ui";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
+import { useConfirm } from "../../contexts/ConfirmContext";
 import { useAsyncAction } from "../../hooks/useAsyncAction";
 import { INVITABLE_ROLES, backend, inviteLink, roleLabel } from "../../services/backend";
 import { errorMessage } from "../../services/errors";
@@ -75,10 +76,18 @@ export function InviteForm({ profileId, onInvited }) {
 
 export function PendingInvitations({ invitations, onChange }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(null);
   if (invitations.length === 0) return null;
 
   const revoke = async (inv) => {
+    const ok = await confirm({
+      danger: true,
+      title: `Revoke the invitation for ${inv.email}?`,
+      message: "The invitation link will stop working. You can send a new invitation later.",
+      confirmLabel: "Revoke invitation",
+    });
+    if (!ok) return;
     setBusy(inv.id);
     try { await backend.sharing.revoke(inv.id); toast.info(`Invitation for ${inv.email} revoked.`); onChange(); }
     catch (e) { toast.error(errorMessage(e)); }
@@ -114,11 +123,22 @@ export function PendingInvitations({ invitations, onChange }) {
 export function MembersList({ profileId, members, isOwner, onChange }) {
   const { user } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
   const [removing, setRemoving] = useState(null);
 
   if (!members) return <LoadingScreen compact label="Loading members…" />;
 
   const changeRole = async (m, role) => {
+    const who = m.displayName || m.email;
+    const ok = await confirm({
+      danger: role === "viewer",
+      title: `Make ${who} ${role === "viewer" ? "a viewer" : "an editor"}?`,
+      message: role === "viewer"
+        ? `${who} will no longer be able to change this plan. They can still see everything in it.`
+        : `${who} will be able to add, change and delete anything in this plan.`,
+      confirmLabel: role === "viewer" ? "Make viewer" : "Make editor",
+    });
+    if (!ok) return;
     try { await backend.sharing.setRole(profileId, m.userId, role); toast.success(`${m.displayName || m.email} is now ${roleLabel(role).toLowerCase()}.`); onChange(); }
     catch (e) { toast.error(errorMessage(e)); }
   };

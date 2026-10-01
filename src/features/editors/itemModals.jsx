@@ -132,7 +132,7 @@ export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDele
     return onSave(next);
   });
   return (
-    <FormModal title={titleFor(item, "monthly item")} description="Repeats every month. Change it here and every future month follows."
+    <FormModal title={titleFor(item, "monthly item")} description="Repeats every month from its first payment (or every month, if no date is set)."
       submitLabel={item ? "Save" : "Add item"} onSubmit={save} onClose={onClose} onDelete={onDelete}>
       <NameField form={form} placeholder="e.g. Electricity" />
       <div className="form-grid">

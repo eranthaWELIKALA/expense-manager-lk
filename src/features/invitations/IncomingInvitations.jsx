@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge, Button, EmptyState } from "../../components/ui";
 import { useToast } from "../../contexts/ToastContext";
+import { useConfirm } from "../../contexts/ConfirmContext";
 import { useWorkspace } from "../../contexts/WorkspaceContext";
 import { backend, roleLabel } from "../../services/backend";
 import { errorMessage } from "../../services/errors";
@@ -10,10 +11,17 @@ import { errorMessage } from "../../services/errors";
 export function useRespondInvitation() {
   const { refreshProfiles, refreshInvitations } = useWorkspace();
   const toast = useToast();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(null);
 
   const respond = async (inv, accept) => {
+    if (!accept && !(await confirm({
+      danger: true,
+      title: `Decline the invitation to “${inv.profileName}”?`,
+      message: "You won't be able to accept it afterwards. The owner would have to invite you again.",
+      confirmLabel: "Decline",
+    }))) return false;
     setBusy(inv.id);
     try {
       const profileId = await backend.sharing.respond(inv.id, accept);

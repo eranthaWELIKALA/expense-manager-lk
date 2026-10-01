@@ -66,6 +66,19 @@ describe("App", () => {
     expect(await screen.findByText(/“Doctor” added on/)).toBeTruthy();
     expect(screen.getByLabelText("Doctor planned").value).toBe("3,500");
 
+    // removing a row asks first; cancel keeps it, confirm deletes it
+    const doctorRow = screen.getByLabelText("Doctor planned").closest(".row");
+    await user.click(within(doctorRow).getByRole("button", { name: "Remove from this month" }));
+    let ask = await screen.findByRole("dialog", { name: /Remove “Doctor”/ });
+    expect(within(ask).getByText(/one-time payment will be deleted/)).toBeTruthy();
+    await user.click(within(ask).getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText("Doctor planned")).toBeTruthy();
+    await user.click(within(screen.getByLabelText("Doctor planned").closest(".row")).getByRole("button", { name: "Remove from this month" }));
+    ask = await screen.findByRole("dialog", { name: /Remove “Doctor”/ });
+    await user.click(within(ask).getByRole("button", { name: "Delete payment" }));
+    expect(await screen.findByText(/“Doctor” removed from/)).toBeTruthy();
+    expect(screen.queryByLabelText("Doctor planned")).toBeNull();
+
     // future-dated one-time payment lands in next month with its date
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 15);
@@ -118,7 +131,7 @@ describe("App", () => {
     await user.click(within(dlg).getByRole("button", { name: "Add bank" }));
     expect(await screen.findByText(/Bank account “Test Bank” added/)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Delete Test Bank" }));
-    await user.click(within(await screen.findByRole("dialog", { name: /Delete “Test Bank”/ })).getByRole("button", { name: "Delete" }));
+    await user.click(within(await screen.findByRole("dialog", { name: /Delete “Test Bank”/ })).getByRole("button", { name: "Delete bank account" }));
     expect(await screen.findByText(/“Test Bank” deleted/)).toBeTruthy();
     expect(screen.queryByText("Test Bank")).toBeNull();
 
