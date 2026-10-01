@@ -141,3 +141,42 @@ describe("usageOf / viaLabel", () => {
     expect(viaLabel(d, { kind: "card", id: "c1" })).toBe("Card · Card");
   });
 });
+
+import { isDateISO, ordinal, dateInMonth, dayMonthLabel } from "./months";
+import { ensureMonthsThrough, firstMonth, addItem } from "./plan";
+describe("dates", () => {
+  it("validates and formats dates", () => {
+    expect(isDateISO("2026-02-28")).toBe(true);
+    expect(isDateISO("2026-02-30")).toBe(false);
+    expect(isDateISO("2026-2-3")).toBe(false);
+    expect(ordinal(1)).toBe("1st"); expect(ordinal(12)).toBe("12th"); expect(ordinal(22)).toBe("22nd"); expect(ordinal(13)).toBe("13th");
+    expect(dateInMonth("2026-11", 31)).toBe("2026-11-30");
+    expect(dateInMonth("2028-02", 30)).toBe("2028-02-29");
+    expect(dayMonthLabel("2026-10-05")).toBe("5 Oct");
+  });
+
+  it("dated one-offs carry a date tag and sort by day", () => {
+    let d = plan();
+    d = addOneOff(d, "2026-08", { kind: "bank", targetId: "b1", name: "Late", amount: 10, date: "2026-08-25" });
+    d = addOneOff(d, "2026-08", { kind: "bank", targetId: "b1", name: "Early", amount: 10, date: "2026-08-03" });
+    const rows = computeMonth(d, "2026-08").banks[0].rows.filter((r) => r.origin === "oneoff");
+    expect(rows.map((r) => [r.label, r.tag])).toEqual([["Early", "3 Aug"], ["Late", "25 Aug"]]);
+  });
+
+  it("recurring items with a start month don't touch earlier months", () => {
+    let d = rollInto(plan(), "2026-08", {});
+    d = addItem(d, "templates", { id: "t9", name: "Gym", amount: 100, via: { kind: "bank", id: "b1" }, flow: "out", startMonth: "2026-09", day: 5 });
+    expect(computeMonth(d, "2026-08").banks[0].rows.some((r) => r.label === "Gym")).toBe(false);
+    const gym = computeMonth(d, "2026-09").banks[0].rows.find((r) => r.label === "Gym");
+    expect(gym.tag).toBe("due 5th");
+  });
+
+  it("ensureMonthsThrough opens the gap so balances carry, without moving active", () => {
+    const d = ensureMonthsThrough(plan(), "2026-11");
+    expect(Object.keys(d.months).sort()).toEqual(["2026-08", "2026-09", "2026-10", "2026-11"]);
+    expect(d.active).toBe("2026-08");
+    expect(computeMonth(d, "2026-11").banks[0].opening).toBeGreaterThan(1000); // chained, not reset to opening
+    expect(ensureMonthsThrough(d, "2026-09")).toBe(d);
+    expect(firstMonth(d)).toBe("2026-08");
+  });
+});

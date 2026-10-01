@@ -63,8 +63,27 @@ describe("App", () => {
     await user.selectOptions(within(dlg).getByLabelText("Pay with"), within(dlg).getByRole("option", { name: "Daily cash" }));
     await user.type(within(dlg).getByLabelText("Amount"), "3500");
     await user.click(within(dlg).getByRole("button", { name: "Add expense" }));
-    expect(await screen.findByText(/“Doctor” added to/)).toBeTruthy();
+    expect(await screen.findByText(/“Doctor” added on/)).toBeTruthy();
     expect(screen.getByLabelText("Doctor planned").value).toBe("3,500");
+
+    // future-dated one-time payment lands in next month with its date
+    const now = new Date();
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+    const iso = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-15`;
+    await user.click(screen.getByRole("button", { name: "+ Add expense" }));
+    dlg = await screen.findByRole("dialog", { name: "Add expense" });
+    await user.type(within(dlg).getByLabelText("What for"), "Dentist");
+    await user.type(within(dlg).getByLabelText("Amount"), "8000");
+    const dateInput = within(dlg).getByLabelText("Date");
+    await user.clear(dateInput);
+    await user.type(dateInput, iso);
+    expect(within(dlg).getByText(/Scheduled payment · goes into/)).toBeTruthy();
+    await user.click(within(dlg).getByRole("button", { name: "Add expense" }));
+    expect(await screen.findByText(/“Dentist” added on 15 .* it's in/)).toBeTruthy();
+    expect(screen.queryByLabelText("Dentist planned")).toBeNull(); // not in this month
+    await user.click(screen.getByRole("button", { name: "Next month" }));
+    expect(await screen.findByLabelText("Dentist planned")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Previous month" }));
 
     // add expense: installment on a card
     await user.click(screen.getByRole("button", { name: "+ Add expense" }));

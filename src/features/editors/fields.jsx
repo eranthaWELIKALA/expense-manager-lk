@@ -1,6 +1,6 @@
 import React from "react";
 import { Field, Select, TextInput } from "../../components/ui";
-import { fmt, mLabel, numOr } from "../../domain";
+import { fmt, mLabel, monthOfDate, numOr, todayISO } from "../../domain";
 
 /* Form fields shared by every add/edit modal. Values are strings while editing. */
 
@@ -28,10 +28,16 @@ export function MoneyField({ form, name = "amount", label = "Amount", hint, clas
   );
 }
 
-export function MonthField({ form, name = "startMonth", label = "Starts" }) {
+/** Furthest ahead an expense can be scheduled. */
+export const maxDate = () => { const d = new Date(); d.setFullYear(d.getFullYear() + 5); return todayISO(d); };
+
+/** Earliest allowed date: the 1st of the plan's first month (balances start there). */
+export const minDateFor = (firstMonthKey) => firstMonthKey + "-01";
+
+export function DateField({ form, name = "date", label = "Date", hint, min, max = maxDate() }) {
   return (
-    <Field label={label} error={form.errors[name]}>
-      <TextInput type="month" value={form.values[name] ?? ""} onChange={form.set(name)} />
+    <Field label={label} hint={hint} error={form.errors[name]}>
+      <TextInput type="date" value={form.values[name] ?? ""} onChange={form.set(name)} min={min} max={max} />
     </Field>
   );
 }
@@ -74,7 +80,7 @@ export const defaultVia = (plan) => {
 };
 
 /** Installment terms: fixed number of months, or a monthly amount until the total is paid. */
-export function InstallmentFields({ form }) {
+export function InstallmentFields({ form, minDate }) {
   const v = form.values;
   const total = numOr(v.total), prepaid = numOr(v.prepaid);
   const preview = v.mode === "term"
@@ -94,9 +100,9 @@ export function InstallmentFields({ form }) {
           ? <MoneyField form={form} name="months" label="Months" />
           : <MoneyField form={form} name="monthly" label="Pay each month" />}
         {v.mode === "open" && <MoneyField form={form} name="prepaid" label="Already paid" hint="Down payment, if any" />}
-        <MonthField form={form} label="First payment" />
+        <DateField form={form} label="First payment" min={minDate} />
       </div>
-      {preview && <div className="preview">≈ <b>{preview}</b>{v.startMonth ? ", from " + mLabel(v.startMonth) : ""}.</div>}
+      {preview && <div className="preview">≈ <b>{preview}</b>{v.date ? ", from " + mLabel(monthOfDate(v.date)) : ""}.</div>}
     </>
   );
 }

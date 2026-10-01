@@ -11,7 +11,7 @@
    object, so results are memoised per data object via WeakMap.
    ============================================================ */
 
-import { prevM, mShort } from "./months";
+import { prevM, mShort, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO } from "./months";
 import { N } from "./format";
 import { instFor } from "./installments";
 
@@ -65,14 +65,17 @@ function computeLines(d, key) {
     push({ key: "wi:" + w.id, label: "Cash withdrawn", kind: "cash", id: w.id, flow: "in", plan: amt, origin: "withdrawal", locked: true });
   });
 
-  /* recurring items */
+  /* recurring items (from their start month, if they have one) */
   (d.templates || []).filter((t) => t.active !== false).forEach((t) => {
+    if (t.startMonth && mDiff(t.startMonth, key) < 0) return;
     const amt = planOf("t:" + t.id, N(t.amount));
+    const day = t.day || null;
+    const due = day ? "due " + ordinal(day) : null;
     if (t.flow === "move") {
-      push({ key: "t:" + t.id, label: t.name, kind: t.via.kind, id: t.via.id, flow: "out", plan: N(t.amount), origin: "move", tag: "transfer" });
-      push({ key: "tm:" + t.id, label: t.name, kind: "bank", id: t.to, flow: "in", plan: amt, origin: "move", tag: "transfer", locked: true });
+      push({ key: "t:" + t.id, label: t.name, kind: t.via.kind, id: t.via.id, flow: "out", plan: N(t.amount), origin: "move", tag: "transfer", day });
+      push({ key: "tm:" + t.id, label: t.name, kind: "bank", id: t.to, flow: "in", plan: amt, origin: "move", tag: "transfer", locked: true, day });
     } else {
-      push({ key: "t:" + t.id, label: t.name, kind: t.via.kind, id: t.via.id, flow: t.flow === "in" ? "in" : "out", plan: N(t.amount), origin: "recurring" });
+      push({ key: "t:" + t.id, label: t.name, kind: t.via.kind, id: t.via.id, flow: t.flow === "in" ? "in" : "out", plan: N(t.amount), origin: "recurring", tag: due, day });
     }
   });
 
@@ -80,14 +83,17 @@ function computeLines(d, key) {
   (d.installments || []).forEach((it) => {
     const s = instFor(it, key);
     if (!s) return;
+    const tag = (s.of ? s.n + "/" + s.of : "#" + s.n) + (it.day ? " · due " + ordinal(it.day) : "");
     push({ key: "i:" + it.id, label: it.name, kind: it.via.kind, id: it.via.id, flow: "out", plan: s.amount,
-      origin: "installment", tag: s.of ? s.n + "/" + s.of : "#" + s.n, locked: true });
+      origin: "installment", tag, locked: true, day: it.day || null });
   });
 
   /* one-offs added to this month only */
-  (M.extra || []).forEach((e) =>
-    push({ key: "x:" + e.id, label: e.name, kind: e.kind, id: e.id2, flow: e.flow || "out", plan: N(e.amount), origin: "oneoff" })
-  );
+  (M.extra || []).forEach((e) => {
+    const dated = isDateISO(e.date);
+    push({ key: "x:" + e.id, label: e.name, kind: e.kind, id: e.id2, flow: e.flow || "out", plan: N(e.amount), origin: "oneoff",
+      tag: dated ? dayMonthLabel(e.date) : null, day: dated ? dayOfDate(e.date) : null });
+  });
 
   return out;
 }
@@ -132,7 +138,7 @@ function doMonth(d, key, depth) {
     let bal = openingFor(d, key, kind, o.id, depth);
     const opening = bal;
     const rows = ls.filter((l) => l.kind === kind && l.id === o.id)
-      .slice().sort((a, b) => (ORIGIN_ORDER[a.origin] ?? 3) - (ORIGIN_ORDER[b.origin] ?? 3))
+      .slice().sort((a, b) => (ORIGIN_ORDER[a.origin] ?? 3) - (ORIGIN_ORDER[b.origin] ?? 3) || (a.day || 0) - (b.day || 0))
       .map((l) => { const a = val(l); bal += l.flow === "in" ? a : -a; return { ...l, amt: a, bal }; });
     return { o, opening, rows, closing: bal };
   };

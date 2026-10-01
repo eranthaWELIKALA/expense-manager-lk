@@ -5,7 +5,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { useViewMonth } from "../../hooks/useViewMonth";
 import {
   computeMonth, fmt, fmtK, mLabel, mShort, nextM, monthRail,
-  setOverride, removeLine, addOneOff, addItem, openMonth, rollInto,
+  setOverride, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, dayMonthLabel,
 } from "../../domain";
 import { ExpenseModal } from "../editors/ExpenseModal";
 import { MonthNav } from "./MonthNav";
@@ -37,13 +37,13 @@ export default function MonthPage() {
       toast.info(`“${line ? line.label : "Item"}” removed from ${mLabel(mk)}.`);
     },
   } : null;
-  const saveExpense = ({ type, item }) => {
+  const saveExpense = ({ type, item, monthKey }) => {
     if (type === "once") {
-      update((d) => addOneOff(d, mk, item));
-      toast.success(`“${item.name}” added to ${mLabel(mk)}.`);
+      update((d) => addOneOff(ensureMonthsThrough(d, monthKey), monthKey, item));
+      toast.success(`“${item.name}” added on ${dayMonthLabel(item.date)}` + (monthKey === mk ? "." : ` — it's in ${mLabel(monthKey)}.`));
     } else if (type === "monthly") {
       update((d) => addItem(d, "templates", item));
-      toast.success(`“${item.name}” added to every month.`);
+      toast.success(`“${item.name}” added to every month from ${mLabel(item.startMonth)}.`);
     } else {
       update((d) => addItem(d, "installments", item));
       toast.success(`Installment “${item.name}” added from ${mLabel(item.startMonth)}.`);

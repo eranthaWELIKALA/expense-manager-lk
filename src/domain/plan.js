@@ -18,7 +18,7 @@
 
 import { uid } from "./ids";
 import { blankMonth } from "./ledger";
-import { currentMonthKey, isMonthKey, mDiff, nextM } from "./months";
+import { currentMonthKey, isDateISO, isMonthKey, mDiff, nextM } from "./months";
 
 export const PLAN_VERSION = 4;
 export const PLAN_COLLECTIONS = ["banks", "incomes", "wallets", "cards", "templates", "installments"];
@@ -140,9 +140,10 @@ export function removeLine(d, mk, lineKey) {
 }
 
 /** Add a one-off payment to a single month. */
-export function addOneOff(d, mk, { kind, targetId, name, amount }) {
+export function addOneOff(d, mk, { kind, targetId, name, amount, date }) {
   const M = monthOf(d, mk);
   const item = { id: uid("x"), name: String(name).slice(0, 120), amount, kind, id2: targetId, flow: "out" };
+  if (isDateISO(date)) item.date = date;
   return withMonth(d, mk, { ...M, extra: [...(M.extra || []), item] });
 }
 
@@ -201,4 +202,21 @@ export function viaLabel(d, via) {
   const list = via.kind === "card" ? d.cards : via.kind === "cash" ? d.wallets : d.banks;
   const name = (list.find((x) => x.id === via.id) || {}).name || "missing";
   return ({ bank: "Bank", cash: "Cash", card: "Card" })[via.kind] + " · " + name;
+}
+
+/** The first month this plan covers (balances start there). */
+export const firstMonth = (d) => Object.keys(d.months).sort()[0] || d.start || d.active;
+
+/**
+ * Make sure `mk` and every month between the last opened month and `mk`
+ * exist, so balances carry into it. Doesn't move `active` (the default view).
+ */
+export function ensureMonthsThrough(d, mk) {
+  const keys = Object.keys(d.months).sort();
+  const months = { ...d.months };
+  let k = keys.length ? keys[keys.length - 1] : mk;
+  if (!months[k]) months[k] = blankMonth();
+  while (mDiff(k, mk) > 0) { k = nextM(k); if (!months[k]) months[k] = blankMonth(); }
+  if (!months[mk]) months[mk] = blankMonth(); // a gap inside the range
+  return Object.keys(months).length === keys.length ? d : { ...d, months };
 }

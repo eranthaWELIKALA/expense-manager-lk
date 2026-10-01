@@ -41,3 +41,19 @@ export const validateAmount = (raw, { required = true, positive = false, integer
 };
 
 export const validateMonth = (v) => (/^\d{4}-(0[1-9]|1[0-2])$/.test(String(v)) ? "" : "Choose a month.");
+
+const isRealDate = (s) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s));
+  if (!m) return false;
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return d.getFullYear() === +m[1] && d.getMonth() === +m[2] - 1 && d.getDate() === +m[3];
+};
+
+/** Validate "YYYY-MM-DD" within optional [min, max] (also "YYYY-MM-DD"). */
+export const validateDate = (v, { min, max, required = true, minLabel } = {}) => {
+  if (!v) return required ? "Choose a date." : "";
+  if (!isRealDate(v)) return "Enter a valid date.";
+  if (min && v < min) return minLabel ? `Must be on or after ${minLabel}.` : "That date is too early.";
+  if (max && v > max) return "That date is too far ahead.";
+  return "";
+};
