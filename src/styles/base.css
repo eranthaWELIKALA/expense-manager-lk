@@ -1,0 +1,22 @@
+/* Design tokens + resets. Everything is scoped under .mmp (the app root). */
+.mmp{
+  --ink:#141B2B; --ink2:#41506B; --mute:#7C89A3;
+  --paper:#EEF1F7; --card:#FFFFFF; --line:#DDE3EE; --line2:#EDF0F6;
+  --jade:#0F7A5F; --jadeS:#E3F3ED;
+  --flag:#BB3A46; --flagS:#FBE9EB;
+  --brass:#8A6210; --brassS:#F7EFDB;
+  --acc:#2A4796; --accS:#E9EDFA;
+  --violet:#5B3E9B; --violetS:#EFE9FA;
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  color:var(--ink); background:var(--paper);
+  min-height:100vh; font-size:14px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+.mmp *{box-sizing:border-box}
+.mmp button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
+.mmp input,.mmp select{font:inherit;color:inherit}
+.mmp .n{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mmp h1,.mmp h2,.mmp h3{font-family:'Space Grotesk',system-ui,sans-serif;letter-spacing:-.015em;margin:0}
+
+.wrap{max-width:1320px;margin:0 auto;padding:18px 16px 80px}
+body{margin:0;background:#EEF1F7}
