@@ -54,16 +54,26 @@ describe("App", () => {
     await user.type(rent, "85000", { skipClick: true });
     await waitFor(() => expect(screen.getByText("Saved")).toBeTruthy(), { timeout: 3000 });
 
-    // add expense: validation, then a one-time cash spend
-    await user.click(screen.getByRole("button", { name: "+ Add expense" }));
-    let dlg = await screen.findByRole("dialog", { name: "Add expense" });
-    await user.click(within(dlg).getByRole("button", { name: "Add expense" }));
-    expect(within(dlg).getByText("Name is required.")).toBeTruthy();
-    await user.type(within(dlg).getByLabelText("What for"), "Doctor");
-    await user.selectOptions(within(dlg).getByLabelText("Pay with"), within(dlg).getByRole("option", { name: "Daily cash" }));
+    // record payment: search finds an existing bill and marks it paid
+    await user.click(screen.getByRole("button", { name: "+ Record payment" }));
+    let dlg = await screen.findByRole("dialog", { name: "Record payment" });
+    await user.type(within(dlg).getByRole("combobox", { name: "What for" }), "Ren");
+    await user.click(within(dlg).getByRole("option", { name: /^Rent/ }));
+    expect(within(dlg).getByLabelText("Amount paid").value).toBe("85000");
+    await user.click(within(dlg).getByRole("button", { name: "Mark paid" }));
+    expect(await screen.findByText(/“Rent” marked paid/)).toBeTruthy();
+
+    // record payment: validation, then something new becomes a paid one-time cash spend
+    await user.click(screen.getByRole("button", { name: "+ Record payment" }));
+    dlg = await screen.findByRole("dialog", { name: "Record payment" });
+    await user.click(within(dlg).getByRole("button", { name: "Record payment" }));
+    expect(within(dlg).getByText("What for is required.")).toBeTruthy();
+    await user.type(within(dlg).getByRole("combobox", { name: "What for" }), "Doctor");
+    expect(within(dlg).getByRole("option", { name: /New payment “Doctor”/ })).toBeTruthy();
+    await user.selectOptions(within(dlg).getByLabelText("Paid with"), within(dlg).getByRole("option", { name: "Daily cash" }));
     await user.type(within(dlg).getByLabelText("Amount"), "3500");
-    await user.click(within(dlg).getByRole("button", { name: "Add expense" }));
-    expect(await screen.findByText(/“Doctor” added on/)).toBeTruthy();
+    await user.click(within(dlg).getByRole("button", { name: "Record payment" }));
+    expect(await screen.findByText(/“Doctor” paid on/)).toBeTruthy();
     expect(screen.getByLabelText("Doctor planned").value).toBe("3,500");
 
     // removing a row asks first; cancel keeps it, confirm deletes it
@@ -83,34 +93,34 @@ describe("App", () => {
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 15);
     const iso = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-15`;
-    await user.click(screen.getByRole("button", { name: "+ Add expense" }));
-    dlg = await screen.findByRole("dialog", { name: "Add expense" });
-    await user.type(within(dlg).getByLabelText("What for"), "Dentist");
+    await user.click(screen.getByRole("button", { name: "+ Record payment" }));
+    dlg = await screen.findByRole("dialog", { name: "Record payment" });
+    await user.type(within(dlg).getByRole("combobox", { name: "What for" }), "Dentist");
     await user.type(within(dlg).getByLabelText("Amount"), "8000");
     const dateInput = within(dlg).getByLabelText("Date");
     await user.clear(dateInput);
     await user.type(dateInput, iso);
-    expect(within(dlg).getByText(/Scheduled payment · goes into/)).toBeTruthy();
-    await user.click(within(dlg).getByRole("button", { name: "Add expense" }));
+    expect(within(dlg).getByText(/Schedules a new one-time payment in/)).toBeTruthy();
+    await user.click(within(dlg).getByRole("button", { name: "Schedule payment" }));
     // next month isn't started yet, so it asks first
     const startDlg = await screen.findByRole("dialog", { name: /^Start / });
     await user.click(within(startDlg).getByRole("button", { name: /^Start / }));
-    expect(await screen.findByText(/“Dentist” added on 15 .* it's in/)).toBeTruthy();
+    expect(await screen.findByText(/“Dentist” scheduled on 15 .* it's in/)).toBeTruthy();
     expect(screen.queryByLabelText("Dentist planned")).toBeNull(); // not in this month
     await user.click(screen.getByRole("button", { name: "Next month" }));
     expect(await screen.findByLabelText("Dentist planned")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Previous month" }));
 
-    // add expense: installment on a card
-    await user.click(screen.getByRole("button", { name: "+ Add expense" }));
-    dlg = await screen.findByRole("dialog", { name: "Add expense" });
+    // new expense: installment on a card
+    await user.click(screen.getByRole("button", { name: "New expense" }));
+    dlg = await screen.findByRole("dialog", { name: "New expense" });
     await user.click(within(dlg).getByRole("radio", { name: /installment/i }));
     await user.type(within(dlg).getByLabelText("What for"), "Phone");
     await user.type(within(dlg).getByLabelText("Total price"), "120000");
     await user.clear(within(dlg).getByLabelText("Months"));
     await user.type(within(dlg).getByLabelText("Months"), "6");
     expect(within(dlg).getByText(/20,000 a month for 6 months/)).toBeTruthy();
-    await user.click(within(dlg).getByRole("button", { name: "Add expense" }));
+    await user.click(within(dlg).getByRole("button", { name: "Add installment" }));
     expect(await screen.findByText(/Installment “Phone” added/)).toBeTruthy();
     expect(screen.getByText("Phone")).toBeTruthy();
 

@@ -45,7 +45,7 @@ function computeLines(d, key) {
     if (o2.removed) return;
     const via = o2.via && o2.via.kind && o2.via.id ? { kind: o2.via.kind, id: o2.via.id } : null; // paid another way this month
     const done = o2.done !== undefined ? !!o2.done : !!o.autoPaid;
-    const paidOn = done && isDateISO(o2.paidOn) ? (o.flow === "in" ? "received " : "paid ") + dayMonthLabel(o2.paidOn) : null;
+    const paidOn = done && isDateISO(o2.paidOn) && o2.paidOn !== o.date ? (o.flow === "in" ? "received " : "paid ") + dayMonthLabel(o2.paidOn) : null;
     out.push({
       ...o, ...via, plan: o2.plan !== undefined ? o2.plan : o.plan, actual: o2.actual !== undefined ? o2.actual : null,
       done, tag: [o.tag, paidOn].filter(Boolean).join(" · ") || null,
@@ -110,7 +110,7 @@ function computeLines(d, key) {
   (M.extra || []).forEach((e) => {
     const dated = isDateISO(e.date);
     push({ key: "x:" + e.id, label: e.name, kind: e.kind, id: e.id2, flow: e.flow || "out", plan: N(e.amount), origin: "oneoff",
-      tag: dated ? dayMonthLabel(e.date) : null, day: dated ? dayOfDate(e.date) : null });
+      tag: dated ? dayMonthLabel(e.date) : null, day: dated ? dayOfDate(e.date) : null, date: dated ? e.date : null });
   });
 
   return out;

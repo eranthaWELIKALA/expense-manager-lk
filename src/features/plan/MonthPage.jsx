@@ -9,7 +9,7 @@ import {
   computeMonth, fmt, fmtK, mLabel, mShort, nextM, monthRail,
   N, setOverride, markPaid, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, monthsToOpen, dayMonthLabel,
 } from "../../domain";
-import { ExpenseModal } from "../editors/ExpenseModal";
+import { NewExpenseModal, RecordPaymentModal } from "../editors/ExpenseModal";
 import { MonthNav } from "./MonthNav";
 import { MoneyMap } from "./MoneyMap";
 import { Ledger } from "./Ledger";
@@ -30,9 +30,9 @@ export default function MonthPage() {
   const { data: plan, update, canEdit } = useProfile();
   const [mk, setMonth] = useViewMonth();
   const [rolling, setRolling] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(null); // "record" | "new"
   const [paying, setPaying] = useState(null); // line key
-  const [modal, setModal] = useState(null); // Actions menu: "pay" | "income" | "edit:<coll>"
+  const [modal, setModal] = useState(null); // Actions menu: "income" | "edit:<coll>"
   const editor = useItemEditor({ startMonth: mk });
   const undo = useUndo();
   const navigate = useNavigate();
@@ -100,8 +100,9 @@ export default function MonthPage() {
         { label: `${line.label} — paid ${fmt(payment.actual)} on ${dayMonthLabel(payment.date)}` });
       toast.success(`“${line.label}” marked paid` + (monthKey === mk ? "." : ` in ${mLabel(monthKey)}.`));
     } else if (type === "once") {
-      update((d) => addOneOff(ensureMonthsThrough(d, monthKey), monthKey, item), { label: `Added “${item.name}” (${fmt(item.amount)}) on ${dayMonthLabel(item.date)}` });
-      toast.success(`“${item.name}” added on ${dayMonthLabel(item.date)}` + (monthKey === mk ? "." : ` — it's in ${mLabel(monthKey)}.`));
+      const verb = item.paid ? "Paid" : "Scheduled";
+      update((d) => addOneOff(ensureMonthsThrough(d, monthKey), monthKey, item), { label: `${verb} “${item.name}” (${fmt(item.amount)}) on ${dayMonthLabel(item.date)}` });
+      toast.success(`“${item.name}” ${verb.toLowerCase()} on ${dayMonthLabel(item.date)}` + (monthKey === mk ? "." : ` — it's in ${mLabel(monthKey)}.`));
     } else if (type === "monthly") {
       update((d) => addItem(d, "templates", item), { label: `Added monthly item “${item.name}”` });
       toast.success(`“${item.name}” added to every month from ${mLabel(item.startMonth)}.`);
@@ -109,8 +110,7 @@ export default function MonthPage() {
       update((d) => addItem(d, "installments", item), { label: `Added installment “${item.name}”` });
       toast.success(`Installment “${item.name}” added from ${mLabel(item.startMonth)}.`);
     }
-    setAdding(false);
-    setModal(null);
+    setAdding(null);
   };
   const saveIncome = async ({ monthKey, line, payment }) => {
     if (!(await confirmNewMonths(monthKey, `This is in ${mLabel(monthKey)}, which isn't started yet.`))) return;
@@ -129,7 +129,7 @@ export default function MonthPage() {
 
   return (
     <>
-      <MonthNav value={mk} items={pills} openedMonths={plan.months} onSelect={setMonth} onMoveNext={() => setRolling(true)} onAddExpense={() => setAdding(true)} onAction={onAction} canEdit={canEdit} />
+      <MonthNav value={mk} items={pills} openedMonths={plan.months} onSelect={setMonth} onMoveNext={() => setRolling(true)} onRecord={() => setAdding("record")} onNewExpense={() => setAdding("new")} onAction={onAction} canEdit={canEdit} />
 
       {!opened && (
         <div style={{ marginBottom: 16 }}>
@@ -200,8 +200,8 @@ export default function MonthPage() {
           }} />
       )}
 
-      {adding && <ExpenseModal plan={plan} monthKey={mk} onSave={saveExpense} onClose={() => setAdding(false)} />}
-      {modal === "pay" && <ExpenseModal plan={plan} monthKey={mk} initialType="pay" onSave={saveExpense} onClose={() => setModal(null)} />}
+      {adding === "record" && <RecordPaymentModal plan={plan} monthKey={mk} onSave={saveExpense} onClose={() => setAdding(null)} />}
+      {adding === "new" && <NewExpenseModal plan={plan} monthKey={mk} onSave={saveExpense} onClose={() => setAdding(null)} />}
       {modal === "income" && <IncomeReceivedModal plan={plan} monthKey={mk} onSave={saveIncome} onClose={() => setModal(null)} />}
       {editColl && (
         <PickItemModal {...PICK[editColl]} items={plan[editColl]} onClose={() => setModal(null)}

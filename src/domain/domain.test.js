@@ -311,3 +311,11 @@ describe("recording a payment with a date", () => {
     expect(l).toMatchObject({ done: true, actual: 100, kind: "bank", tag: "1/12 · paid 12 Aug" });
   });
 });
+
+describe("addOneOff paid", () => {
+  it("records a one-time payment as already paid on its date", () => {
+    const d = addOneOff(plan(), "2026-08", { kind: "bank", targetId: "b1", name: "Taxi", amount: 900, date: "2026-08-05", paid: true });
+    const l = computeMonth(d, "2026-08").ls.find((x) => x.label === "Taxi");
+    expect(l).toMatchObject({ done: true, tag: "5 Aug" });
+  });
+});

@@ -208,12 +208,13 @@ export function removeLine(d, mk, lineKey) {
   return setOverride(d, mk, lineKey, "removed", true);
 }
 
-/** Add a one-off payment to a single month. */
-export function addOneOff(d, mk, { kind, targetId, name, amount, date }) {
+/** Add a one-off payment to a single month; `paid` records it as already paid (on `date`). */
+export function addOneOff(d, mk, { kind, targetId, name, amount, date, paid = false }) {
   const M = monthOf(d, mk);
   const item = { id: uid("x"), name: String(name).slice(0, 120), amount, kind, id2: targetId, flow: "out" };
   if (isDateISO(date)) item.date = date;
-  return withMonth(d, mk, { ...M, extra: [...(M.extra || []), item] });
+  const ov = paid ? { ...M.ov, ["x:" + item.id]: { done: true, ...(isDateISO(date) ? { paidOn: date } : {}) } } : M.ov;
+  return withMonth(d, mk, { ...M, ov, extra: [...(M.extra || []), item] });
 }
 
 /** Make a month part of the chain (so balances carry into it) and track the latest one opened. */
