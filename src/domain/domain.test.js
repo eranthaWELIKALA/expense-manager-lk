@@ -180,3 +180,126 @@ describe("dates", () => {
     expect(firstMonth(d)).toBe("2026-08");
   });
 });
+
+import { markPaid, pinPaidHistory, updateItem } from "./plan";
+import { currentMonthKey, nextM as nm } from "./months";
+
+describe("paying a line", () => {
+  it("markPaid records the actual amount and moves the line to the method used, this month only", () => {
+    let d = plan();
+    d.months["2026-09"] = blankMonth();
+    d = markPaid(d, "2026-08", "t:t1", { actual: 1900, via: { kind: "card", id: "c1" } });
+    const aug = computeMonth(d, "2026-08");
+    const rent = aug.ls.find((l) => l.key === "t:t1");
+    expect(rent).toMatchObject({ done: true, actual: 1900, kind: "card", id: "c1" });
+    expect(aug.cards[0].rows.some((r) => r.key === "t:t1")).toBe(true);
+    expect(aug.banks[0].rows.some((r) => r.key === "t:t1")).toBe(false);
+    const sep = computeMonth(d, "2026-09").ls.find((l) => l.key === "t:t1");
+    expect(sep).toMatchObject({ done: false, kind: "bank", id: "b1" });
+  });
+
+  it("auto-debited installments count as paid once the due day passes, unless unticked", () => {
+    const now = currentMonthKey();
+    const d = plan();
+    d.installments = [{ ...d.installments[0], startMonth: "2020-01", months: 600, auto: true, day: 1 }];
+    d.months = { "2020-03": blankMonth(), [nm(nm(now))]: blankMonth() };
+    expect(computeMonth(d, "2020-03").ls.find((l) => l.key === "i:i1")).toMatchObject({ done: true });
+    expect(computeMonth(d, nm(nm(now))).ls.find((l) => l.key === "i:i1")).toMatchObject({ done: false });
+    const undone = setOverride(d, "2020-03", "i:i1", "done", false);
+    expect(computeMonth(undone, "2020-03").ls.find((l) => l.key === "i:i1").done).toBe(false);
+  });
+
+  it("pinPaidHistory keeps past and paid months on the old method when the item's method changes", () => {
+    const today = "2026-09";
+    let d = plan();
+    d.months = { "2026-08": blankMonth(), "2026-09": blankMonth(), "2026-10": blankMonth(), "2026-11": blankMonth() };
+    d = setOverride(d, "2026-10", "t:t1", "done", true);
+    const before = d.templates[0];
+    const after = { ...before, via: { kind: "card", id: "c1" } };
+    const next = updateItem(pinPaidHistory(d, "templates", before, after, today), "templates", before.id, after);
+    const where = (mk) => { const l = computeMonth(next, mk).ls.find((x) => x.key === "t:t1"); return l.kind + ":" + l.id; };
+    expect(where("2026-08")).toBe("bank:b1"); // past
+    expect(where("2026-09")).toBe("card:c1"); // current, unpaid
+    expect(where("2026-10")).toBe("bank:b1"); // already paid
+    expect(where("2026-11")).toBe("card:c1"); // future
+  });
+});
+
+import { withLog, revertTo, normalizeLog } from "./history";
+import { applyItemChange } from "./plan";
+import { versionAt, pastBefore, canApplyToOneMonth } from "./versions";
+
+describe("history log", () => {
+  it("records changes, merges typing into one entry, and undoes linearly", () => {
+    const t0 = new Date("2026-10-01T10:00:00Z");
+    const a = plan();
+    const b = withLog(a, setOverride(a, "2026-08", "t:t1", "actual", 1), { label: "Rent 1", group: "g" }, t0);
+    const c = withLog(b, setOverride(b, "2026-08", "t:t1", "actual", 19), { label: "Rent 19", group: "g" }, new Date(t0.getTime() + 1000));
+    expect(c.log).toHaveLength(1);
+    expect(c.log[0].label).toBe("Rent 19");
+    const d = withLog(c, addItem(c, "banks", { id: "b3", name: "New", opening: 0 }), { label: "Add bank" }, t0);
+    expect(d.log.map((e) => e.label)).toEqual(["Add bank", "Rent 19"]);
+    // undo only the newest
+    expect(revertTo(d, 0).banks).toHaveLength(2);
+    expect(revertTo(d, 0).months["2026-08"].ov["t:t1"].actual).toBe(19);
+    // undo the older one: the newer goes too
+    const r = revertTo(d, 1);
+    expect(r.banks).toHaveLength(2);
+    expect(r.months["2026-08"].ov["t:t1"]).toBeUndefined();
+    // a month that didn't exist is removed again
+    const e = withLog(d, ensureMonthsThrough(d, "2026-10"), { label: "open" });
+    expect(Object.keys(revertTo(e, 0).months)).toEqual(["2026-08"]);
+  });
+
+  it("ignores no-op changes and unlabeled updates, and normalizes junk", () => {
+    const a = plan();
+    expect(withLog(a, { ...a }, { label: "x" }).log).toBeUndefined();
+    expect(withLog(a, addItem(a, "banks", { id: "z" }), null).log).toBeUndefined();
+    expect(normalizeLog([null, { id: "1", label: "ok", prev: {} }, { id: 2 }])).toHaveLength(1);
+  });
+});
+
+describe("item versions and scoped edits", () => {
+  const rent = (d) => (mk) => computeMonth(d, mk).ls.find((l) => l.key === "t:t1");
+  const base = () => { const d = plan(); d.months = { "2026-08": blankMonth(), "2026-09": blankMonth(), "2026-10": blankMonth() }; return d; };
+
+  it("'future' keeps earlier months on the old values", () => {
+    const d = base();
+    const t = d.templates[0];
+    const n = applyItemChange(d, "templates", t, { ...t, amount: 2500 }, "future", "2026-09");
+    expect([rent(n)("2026-08").plan, rent(n)("2026-09").plan, rent(n)("2026-10").plan]).toEqual([2000, 2500, 2500]);
+    // a second change from an earlier month replaces the later version
+    const t2 = n.templates[0];
+    const n2 = applyItemChange(n, "templates", t2, { ...t2, amount: 3000 }, "future", "2026-08");
+    expect([rent(n2)("2026-08").plan, rent(n2)("2026-10").plan]).toEqual([3000, 3000]);
+    expect(n2.templates[0].past).toEqual([{ until: "2026-07", amount: 2000, via: t.via, flow: "out", to: null, day: null }]);
+  });
+
+  it("'month' overrides one month; 'all' rewrites every month and clears versions", () => {
+    const d = base();
+    const t = d.templates[0];
+    const m = applyItemChange(d, "templates", t, { ...t, amount: 2100, via: { kind: "card", id: "c1" } }, "month", "2026-09");
+    expect(rent(m)("2026-09")).toMatchObject({ plan: 2100, kind: "card" });
+    expect(rent(m)("2026-10")).toMatchObject({ plan: 2000, kind: "bank" });
+    const f = applyItemChange(d, "templates", t, { ...t, amount: 2500 }, "future", "2026-09");
+    const a = applyItemChange(f, "templates", f.templates[0], { ...f.templates[0], amount: 1800 }, "all", "2026-09");
+    expect(a.templates[0].past).toBeUndefined();
+    expect(rent(a)("2026-08").plan).toBe(1800);
+    expect(canApplyToOneMonth("templates", t, { ...t, day: 5 })).toBe(false);
+  });
+
+  it("salaries: versions, one-month amounts, and varying income", () => {
+    const d = base();
+    const inc = d.incomes[0];
+    const f = applyItemChange(d, "incomes", inc, { ...inc, splits: [{ bank: "b1", amount: 6000 }] }, "future", "2026-10");
+    const sal = (p, mk) => computeMonth(p, mk).ls.find((l) => l.key === "s:in1:0");
+    expect([sal(f, "2026-09").plan, sal(f, "2026-10").plan]).toEqual([5000, 6000]);
+    expect(versionAt(f.incomes[0], "2026-09").splits[0].amount).toBe(5000);
+    const v = applyItemChange(d, "incomes", inc, { ...inc, variable: true }, "all", "2026-10");
+    expect(sal(v, "2026-08")).toMatchObject({ variable: true, tag: "estimate" });
+    const got = markPaid(v, "2026-08", "s:in1:0", { actual: 4200 });
+    expect(computeMonth(got, "2026-08").earned).toBe(4200);
+    expect(sal(got, "2026-08").tag).toBeNull();
+    expect(pastBefore(inc, "incomes", "2026-10")).toEqual([{ until: "2026-09", splits: inc.splits, variable: null }]);
+  });
+});

@@ -23,6 +23,10 @@ describe("pastMonthsAffected", () => {
     const t = plan.templates[0];
     expect(pastMonthsAffected(plan, "templates", t, { ...t, name: "Rent!" })).toEqual([]);
   });
+  it("ignores payment-method changes, since history keeps its method", () => {
+    const t = plan.templates[0];
+    expect(pastMonthsAffected(plan, "templates", t, { ...t, via: { kind: "cash", id: "w1" } })).toEqual([]);
+  });
   it("ignores items that only start this month", () => {
     const t = plan.templates[1];
     expect(pastMonthsAffected(plan, "templates", t, { ...t, amount: 20 })).toEqual([]);

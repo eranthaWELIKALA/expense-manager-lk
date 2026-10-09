@@ -11,9 +11,10 @@
    object, so results are memoised per data object via WeakMap.
    ============================================================ */
 
-import { prevM, mShort, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO } from "./months";
+import { prevM, mShort, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, dateInMonth, todayISO } from "./months";
 import { N } from "./format";
 import { instFor } from "./installments";
+import { versionAt } from "./versions";
 
 export const blankMonth = () => ({ ov: {}, extra: [], adjust: {} });
 
@@ -36,17 +37,25 @@ function computeLines(d, key) {
   const push = (o) => {
     const o2 = M.ov[o.key] || {};
     if (o2.removed) return;
-    out.push({ ...o, plan: o2.plan !== undefined ? o2.plan : o.plan, actual: o2.actual !== undefined ? o2.actual : null, done: !!o2.done });
+    const via = o2.via && o2.via.kind && o2.via.id ? { kind: o2.via.kind, id: o2.via.id } : null; // paid another way this month
+    out.push({
+      ...o, ...via, plan: o2.plan !== undefined ? o2.plan : o.plan, actual: o2.actual !== undefined ? o2.actual : null,
+      done: o2.done !== undefined ? !!o2.done : !!o.autoPaid,
+    });
   };
   const planOf = (k, fallback) => { const o = M.ov[k]; return o && o.plan !== undefined ? o.plan : fallback; };
 
   /* salaries land in banks */
-  (d.incomes || []).filter((i) => i.active !== false).forEach((inc) =>
-    (inc.splits || []).forEach((sp, ix) => push({
-      key: "s:" + inc.id + ":" + ix, label: inc.name + " salary", kind: "bank", id: sp.bank,
-      flow: "in", plan: N(sp.amount), origin: "salary",
-      tag: (inc.splits.length > 1 ? "portion " + (ix + 1) + "/" + inc.splits.length : null),
-    }))
+  (d.incomes || []).filter((i) => i.active !== false).map((i) => versionAt(i, key)).forEach((inc) =>
+    (inc.splits || []).forEach((sp, ix) => {
+      const portion = inc.splits.length > 1 ? "portion " + (ix + 1) + "/" + inc.splits.length : null;
+      const est = inc.variable && !(M.ov["s:" + inc.id + ":" + ix] || {}).done ? "estimate" : null; // varies: enter what came in
+      push({
+        key: "s:" + inc.id + ":" + ix, label: inc.name + " salary", kind: "bank", id: sp.bank,
+        flow: "in", plan: N(sp.amount), origin: "salary", variable: !!inc.variable,
+        tag: [portion, est].filter(Boolean).join(" · ") || null,
+      });
+    })
   );
 
   /* last month's card totals bill to the card's bank */
@@ -66,7 +75,7 @@ function computeLines(d, key) {
   });
 
   /* recurring items (from their start month, if they have one) */
-  (d.templates || []).filter((t) => t.active !== false).forEach((t) => {
+  (d.templates || []).filter((t) => t.active !== false).map((t) => versionAt(t, key)).forEach((t) => {
     if (t.startMonth && mDiff(t.startMonth, key) < 0) return;
     const amt = planOf("t:" + t.id, N(t.amount));
     const day = t.day || null;
@@ -83,9 +92,10 @@ function computeLines(d, key) {
   (d.installments || []).forEach((it) => {
     const s = instFor(it, key);
     if (!s) return;
-    const tag = (s.of ? s.n + "/" + s.of : "#" + s.n) + (it.day ? " · due " + ordinal(it.day) : "");
+    const tag = (s.of ? s.n + "/" + s.of : "#" + s.n) + (it.day ? " · due " + ordinal(it.day) : "") + (it.auto ? " · auto" : "");
     push({ key: "i:" + it.id, label: it.name, kind: it.via.kind, id: it.via.id, flow: "out", plan: s.amount,
-      origin: "installment", tag, locked: true, day: it.day || null });
+      origin: "installment", tag, locked: true, day: it.day || null,
+      autoPaid: !!it.auto && dateInMonth(key, it.day) <= todayISO() }); // auto-debited once the due day passes
   });
 
   /* one-offs added to this month only */

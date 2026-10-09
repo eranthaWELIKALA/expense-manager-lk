@@ -2,7 +2,10 @@ import React, { useCallback, useState } from "react";
 import { useConfirm } from "../../contexts/ConfirmContext";
 import { useProfile } from "../../contexts/ProfileContext";
 import { useToast } from "../../contexts/ToastContext";
-import { addItem, currentMonthKey, lines, mLabel, removeItem, updateItem, usageOf } from "../../domain";
+import {
+  addItem, applyItemChange, canApplyToOneMonth, currentMonthKey, lines, mLabel, mShort, pinPaidHistory, removeItem, replaceItem, usageOf, versionedChanges,
+} from "../../domain";
+import { ScopeDialog } from "./ScopeDialog";
 import { BankModal, CardModal, IncomeModal, InstallmentModal, RecurringModal, WalletModal } from "./itemModals";
 
 /** Everything the UI needs to know about each plan collection. */
@@ -18,14 +21,20 @@ export const COLLECTIONS = {
 /* Ledger line keys each collection produces (see domain/ledger.js). */
 const LINE_PREFIX = { incomes: "s:", wallets: "w:", cards: "b:", templates: "t:", installments: "i:" };
 const COSMETIC = new Set(["name", "note"]);
+/* Payment method / auto-debit changes leave history alone (see pinPaidHistory). */
+const PINNED = new Set(["via", "auto"]);
+/* Edits to these ask which months they apply to (see applyItemChange). */
+const SCOPED = new Set(["templates", "incomes"]);
+const SCOPE_SUFFIX = { month: (mk) => " — " + mShort(mk) + " only", future: (mk) => " — from " + mShort(mk), all: () => " — all months" };
 
 /**
  * Past months (before this calendar month) whose numbers an edit would change.
  * Only real changes count — renaming or editing a note is harmless.
  */
-export function pastMonthsAffected(plan, coll, before, after) {
+export function pastMonthsAffected(plan, coll, before, after, { keepsPinned = true } = {}) {
   const changed = Object.keys({ ...before, ...after })
-    .filter((k) => !COSMETIC.has(k) && JSON.stringify(before[k]) !== JSON.stringify(after[k]));
+    .filter((k) => !COSMETIC.has(k) && JSON.stringify(before[k]) !== JSON.stringify(after[k]))
+    .filter((k) => !(keepsPinned && PINNED.has(k) && (coll === "templates" || coll === "installments")));
   if (changed.length === 0) return [];
   const past = Object.keys(plan.months).filter((k) => k < currentMonthKey()).sort();
   if (coll === "banks") return changed.includes("opening") ? past : [];
@@ -42,11 +51,15 @@ const range = (ms) => (ms.length === 1 ? mLabel(ms[0]) : `${mLabel(ms[0])} – $
  * Returns {openAdd(coll), openEdit(coll, item), askDelete(coll, item), dialogs, canEdit}.
  * Render `dialogs` once in the page.
  */
-export function useItemEditor({ startMonth } = {}) {
+export function useItemEditor({ startMonth = currentMonthKey() } = {}) {
   const { data: plan, update, canEdit } = useProfile();
   const toast = useToast();
   const confirm = useConfirm();
   const [editing, setEditing] = useState(null); // {coll, item|null}
+  const [scoping, setScoping] = useState(null); // {props, resolve} while asking which months an edit applies to
+
+  const askScope = (props) => new Promise((resolve) => setScoping({ props, resolve }));
+  const settleScope = (scope) => { scoping?.resolve(scope); setScoping(null); };
 
   const openAdd = useCallback((coll) => canEdit && setEditing({ coll, item: null }), [canEdit]);
   const openEdit = useCallback((coll, item) => canEdit && setEditing({ coll, item }), [canEdit]);
@@ -64,13 +77,25 @@ export function useItemEditor({ startMonth } = {}) {
       confirmLabel: `Delete ${noun}`,
     });
     if (!ok) return false;
-    update((d) => removeItem(d, coll, item.id));
+    update((d) => removeItem(d, coll, item.id), { label: `Deleted ${noun} “${item.name}”` });
     toast.info(`${cap(noun)} “${item.name}” deleted.`);
     return true;
   }, [canEdit, plan, confirm, update, toast]);
 
   const save = (coll, existing) => async (item) => {
     const { noun } = COLLECTIONS[coll];
+    if (existing && SCOPED.has(coll) && versionedChanges(coll, existing, item).length) {
+      const scope = await askScope({
+        name: item.name, monthKey: startMonth,
+        monthOk: canApplyToOneMonth(coll, existing, item),
+        past: pastMonthsAffected(plan, coll, existing, item, { keepsPinned: false }),
+      });
+      if (!scope) return; // back to the edit dialog
+      update((d) => applyItemChange(d, coll, existing, item, scope, startMonth), { label: `Edited ${noun} “${item.name}”` + SCOPE_SUFFIX[scope](startMonth) });
+      toast.success(`${cap(noun)} “${item.name}” updated` + (scope === "month" ? ` for ${mLabel(startMonth)} only.` : scope === "future" ? ` from ${mLabel(startMonth)}.` : " in every month."));
+      setEditing(null);
+      return;
+    }
     if (existing) {
       const affected = pastMonthsAffected(plan, coll, existing, item);
       if (affected.length) {
@@ -86,7 +111,8 @@ export function useItemEditor({ startMonth } = {}) {
         if (!ok) return; // keep the modal open
       }
     }
-    update((d) => (existing ? updateItem(d, coll, item.id, item) : addItem(d, coll, item)));
+    update((d) => (existing ? replaceItem(pinPaidHistory(d, coll, existing, item), coll, item) : addItem(d, coll, item)),
+      { label: `${existing ? "Edited" : "Added"} ${noun} “${item.name}”` });
     toast.success(`${cap(noun)} “${item.name}” ${existing ? "updated" : "added"}.`);
     setEditing(null);
   };
@@ -104,6 +130,7 @@ export function useItemEditor({ startMonth } = {}) {
         onDelete={editing.item ? async () => { if (await askDelete(editing.coll, editing.item)) setEditing(null); } : undefined}
       />
     );
+    if (scoping) dialogs = <>{dialogs}<ScopeDialog {...scoping.props} onChoose={settleScope} onClose={() => settleScope(null)} /></>;
   }
 
   return { openAdd, openEdit, askDelete, dialogs, canEdit };

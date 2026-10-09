@@ -101,6 +101,12 @@ export function InstallmentFields({ form, minDate }) {
           : <MoneyField form={form} name="monthly" label="Pay each month" />}
         {v.mode === "open" && <MoneyField form={form} name="prepaid" label="Already paid" hint="Down payment, if any" />}
         <DateField form={form} label="First payment" min={minDate} />
+        <Field label="Each month" hint={v.auto === "auto" ? "Marked paid on its due day. Untick it if a deduction fails." : "Tick it off in the month when you pay."}>
+          <Select value={v.auto || "manual"} onChange={form.set("auto")}>
+            <option value="manual">I pay it myself</option>
+            <option value="auto">Deducted automatically</option>
+          </Select>
+        </Field>
       </div>
       {preview && <div className="preview">≈ <b>{preview}</b>{v.date ? ", from " + mLabel(monthOfDate(v.date)) : ""}.</div>}
     </>

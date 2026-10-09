@@ -22,6 +22,7 @@ const ProfileLayout = lazy(() => import("./features/profiles/ProfileLayout"));
 const MonthPage = lazy(() => import("./features/plan/MonthPage"));
 const CommitmentsPage = lazy(() => import("./features/commitments/CommitmentsPage"));
 const SetupPage = lazy(() => import("./features/setup/SetupPage"));
+const HistoryPage = lazy(() => import("./features/history/HistoryPage"));
 const AcceptInvitePage = lazy(() => import("./features/invitations/AcceptInvitePage"));
 const SettingsLayout = lazy(() => import("./features/settings/SettingsLayout"));
 const AccountSettingsPage = lazy(() => import("./features/settings/AccountSettingsPage"));
@@ -74,6 +75,7 @@ export default function App() {
                       <Route path="month" element={<MonthPage />} />
                       <Route path="commitments" element={<CommitmentsPage />} />
                       <Route path="setup" element={<SetupPage />} />
+                      <Route path="history" element={<HistoryPage />} />
                     </Route>
                     <Route path="/settings" element={<SettingsLayout />}>
                       <Route index element={<Navigate to="account" replace />} />

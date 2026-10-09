@@ -24,6 +24,7 @@ function RunningItem({ plan, item, mk, editor }) {
       <div className="t">
         <b>{item.name}</b>
         <Badge tone="brass">{slice.of ? slice.n + " of " + slice.of : "month " + slice.n}</Badge>
+        {item.auto && <Badge>auto-debit</Badge>}
         <span className="n" style={{ fontWeight: 600 }}>{fmt(slice.amount)}</span>
         <ItemActions item={item} editor={editor} />
       </div>

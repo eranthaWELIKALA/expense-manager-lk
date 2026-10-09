@@ -2,13 +2,16 @@
 
    @typedef {{kind: "bank"|"cash"|"card", id: string}} Via
    @typedef {{id:string, name:string, note?:string, opening:number}} Bank
-   @typedef {{id:string, name:string, active?:boolean, splits:{bank:string, amount:number}[]}} Income
+   @typedef {{id:string, name:string, active?:boolean, variable?:boolean, splits:{bank:string, amount:number}[], past?:object[]}} Income
+              (variable: the amount differs each month — `splits` is the estimate; past: see versions.js)
    @typedef {{id:string, name:string, from:string, amount:number}} Wallet
    @typedef {{id:string, name:string, bank:string, note?:string}} Card
-   @typedef {{id:string, name:string, amount:number, via:Via, flow:"out"|"in"|"move", to?:string, active?:boolean}} Template
+   @typedef {{id:string, name:string, amount:number, via:Via, flow:"out"|"in"|"move", to?:string, active?:boolean,
+              startMonth?:string, day?:number, past?:object[]}} Template
    @typedef {{id:string, name:string, mode:"term"|"open", total:number, months?:number, monthly?:number,
-              prepaid?:number, startMonth:string, via:Via}} Installment
-   @typedef {{ov:Object<string,{plan?:number, actual?:number|null, done?:boolean, removed?:boolean}>,
+              prepaid?:number, startMonth:string, via:Via, auto?:boolean}} Installment
+              (auto: deducted automatically — counts as paid once its due day passes)
+   @typedef {{ov:Object<string,{plan?:number, actual?:number|null, done?:boolean, removed?:boolean, via?:Via}>,
               extra:{id:string, name:string, amount:number, kind:string, id2:string, flow?:string}[],
               adjust:Object<string,number>}} MonthState
    @typedef {{v:number, active:string, start:string, banks:Bank[], incomes:Income[], wallets:Wallet[],
@@ -17,8 +20,10 @@
 */
 
 import { uid } from "./ids";
-import { blankMonth } from "./ledger";
+import { blankMonth, lines } from "./ledger";
 import { currentMonthKey, isDateISO, isMonthKey, mDiff, nextM } from "./months";
+import { normalizeLog } from "./history";
+import { canApplyToOneMonth, pastBefore, versionedChanges } from "./versions";
 
 export const PLAN_VERSION = 4;
 export const PLAN_COLLECTIONS = ["banks", "incomes", "wallets", "cards", "templates", "installments"];
@@ -112,6 +117,7 @@ export function normalizePlan(raw) {
       adjust: isObj(M.adjust) ? M.adjust : {},
     };
   }
+  out.log = normalizeLog(raw.log);
   const fallback = keys.sort().at(-1) || currentMonthKey();
   out.active = isMonthKey(raw.active) ? raw.active : fallback;
   out.start = isMonthKey(raw.start) ? raw.start : out.active;
@@ -127,6 +133,68 @@ const withMonth = (d, mk, M) => ({ ...d, months: { ...d.months, [mk]: M } });
 export function setOverride(d, mk, lineKey, field, value) {
   const M = monthOf(d, mk);
   return withMonth(d, mk, { ...M, ov: { ...M.ov, [lineKey]: { ...(M.ov[lineKey] || {}), [field]: value } } });
+}
+
+/** Mark a line paid in one month with what was actually paid, and how (this month only). */
+export function markPaid(d, mk, lineKey, { actual, via }) {
+  const M = monthOf(d, mk);
+  const prev = M.ov[lineKey] || {};
+  const next = { ...prev, done: true, actual };
+  if (via && via.kind && via.id) next.via = { kind: via.kind, id: via.id };
+  return withMonth(d, mk, { ...M, ov: { ...M.ov, [lineKey]: next } });
+}
+
+/**
+ * Before an item's payment method or auto-debit setting changes, pin the old
+ * values onto past months and months already marked paid, so history keeps
+ * showing how those payments were really made. Unpaid months follow the edit.
+ */
+export function pinPaidHistory(d, coll, before, after, today = currentMonthKey()) {
+  const prefix = { templates: "t:", installments: "i:" }[coll];
+  if (!prefix || !before || !before.via) return d;
+  const viaChanged = JSON.stringify(before.via) !== JSON.stringify(after.via);
+  const autoChanged = !!before.auto !== !!after.auto;
+  if (!viaChanged && !autoChanged) return d;
+  const key = prefix + before.id;
+  let out = d;
+  for (const mk of Object.keys(d.months)) {
+    const line = lines(d, mk).find((l) => l.key === key);
+    if (!line || !(mk < today || line.done)) continue;
+    const ov = (d.months[mk].ov || {})[key] || {};
+    if (viaChanged && !ov.via) out = setOverride(out, mk, key, "via", { kind: line.kind, id: line.id });
+    if (autoChanged && line.done && ov.done === undefined) out = setOverride(out, mk, key, "done", true);
+  }
+  return out;
+}
+
+/**
+ * Apply an edit to a monthly item or salary for a chosen span of months:
+ *   "month"  — only `mk` (amount / payment method as overrides for that month)
+ *   "future" — `mk` and every later month; earlier months keep the old values
+ *   "all"    — every month, past ones included
+ * Months already marked paid keep the payment method they were paid with.
+ */
+export function applyItemChange(d, coll, before, after, scope, mk) {
+  const prefix = coll === "templates" ? "t:" : "s:";
+  if (scope === "month") {
+    if (!canApplyToOneMonth(coll, before, after)) throw new Error("Only amounts and payment methods can change for a single month.");
+    let out = updateItem(d, coll, before.id, { name: after.name }); // renames apply everywhere
+    if (coll === "templates") {
+      const changed = versionedChanges(coll, before, after);
+      if (changed.includes("amount")) out = setOverride(out, mk, prefix + before.id, "plan", after.amount);
+      if (changed.includes("via")) out = setOverride(out, mk, prefix + before.id, "via", { ...after.via });
+    } else {
+      after.splits.forEach((sp, ix) => {
+        if (sp.amount !== before.splits[ix].amount) out = setOverride(out, mk, prefix + before.id + ":" + ix, "plan", sp.amount);
+      });
+    }
+    return out;
+  }
+  const pinned = coll === "templates" ? pinPaidHistory(d, coll, before, after, "") : d;
+  const next = { ...after };
+  if (scope === "future" && versionedChanges(coll, before, after).length) next.past = pastBefore(before, coll, mk);
+  else if (scope === "all") delete next.past;
+  return replaceItem(pinned, coll, next);
 }
 
 /** Remove a line from one month. One-offs are deleted; derived lines are hidden. */
@@ -170,6 +238,8 @@ export function rollInto(d, mk, adjustments) {
 
 export const addItem = (d, coll, item) => ({ ...d, [coll]: [...d[coll], item] });
 export const updateItem = (d, coll, id, patch) => ({ ...d, [coll]: d[coll].map((x) => (x.id === id ? { ...x, ...patch } : x)) });
+/** Swap in a complete new version of an item (fields it no longer has are dropped). */
+export const replaceItem = (d, coll, item) => ({ ...d, [coll]: d[coll].map((x) => (x.id === item.id ? item : x)) });
 export const removeItem = (d, coll, id) => ({ ...d, [coll]: d[coll].filter((x) => x.id !== id) });
 
 /** Month keys to show in the month rail: every opened month plus the next one. */

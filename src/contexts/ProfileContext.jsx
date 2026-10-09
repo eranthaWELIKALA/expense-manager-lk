@@ -1,8 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { backend, canEditRole } from "../services/backend";
 import { ErrorCode, errorMessage, isAppError } from "../services/errors";
-import { normalizePlan } from "../domain";
+import { normalizePlan, withLog } from "../domain";
 import { useToast } from "./ToastContext";
+import { useWorkspace } from "./WorkspaceContext";
 
 const ProfileContext = createContext(null);
 const SAVE_DELAY_MS = 600;
@@ -19,6 +20,9 @@ const SAVE_DELAY_MS = 600;
  */
 export function ProfileProvider({ profileId, children }) {
   const toast = useToast();
+  const { account } = useWorkspace();
+  const byRef = useRef("");
+  byRef.current = account ? account.displayName || account.email : "";
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [loadError, setLoadError] = useState(null);
   const [meta, setMeta] = useState(null);
@@ -90,10 +94,15 @@ export function ProfileProvider({ profileId, children }) {
   const flushRef = useRef(flush);
   flushRef.current = flush;
 
-  /** Replace the plan (pass the new object or an updater). No-op for viewers. */
-  const update = useCallback((next) => {
+  /**
+   * Replace the plan (pass the new object or an updater). No-op for viewers.
+   * Pass `log: {label, group?, undid?}` to record the change in the plan's history (so it can be undone).
+   */
+  const update = useCallback((next, log) => {
     if (!canEditRef.current) return;
-    const v = typeof next === "function" ? next(dataRef.current) : next;
+    const before = dataRef.current;
+    let v = typeof next === "function" ? next(before) : next;
+    if (log) v = withLog(before, v, { ...log, by: byRef.current });
     if (v === dataRef.current) return;
     dataRef.current = v;
     pendingRef.current = v;

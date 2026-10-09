@@ -46,6 +46,7 @@ function ProfileFrame() {
           { to: base + "/month", label: "Month" },
           { to: base + "/commitments", label: "Commitments" },
           { to: base + "/setup", label: "Setup" },
+          { to: base + "/history", label: "History" },
         ]} />
         <Link className="btn sm" to={`/settings/profiles/${profileId}`}>{isOwner ? "Share" : "Details"}</Link>
       </div>
@@ -55,7 +56,7 @@ function ProfileFrame() {
   );
 }
 
-/** /p/:profileId/* — loads the profile and renders the Month / Commitments / Setup tabs. */
+/** /p/:profileId/* — loads the profile and renders the Month / Commitments / Setup / History tabs. */
 export default function ProfileLayout() {
   const { profileId } = useParams();
   // key: fully reset state (and flush saves) when switching profiles

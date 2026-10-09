@@ -1,6 +1,7 @@
 import React from "react";
 import { AmountInput, Checkbox, RemoveButton } from "../../components/ui";
 import { fmt } from "../../domain";
+import { asksAmount, isPayable } from "./PayDialog";
 
 /** Column headings shared by ledgers and cards. */
 export function LineHeader({ showBalance = true }) {
@@ -18,14 +19,16 @@ const Dot = ({ ratio, neg }) => (
 
 /**
  * One derived line (salary, bill, recurring item, installment, one-off).
- * `actions`: {set(key, field, value), remove(key)}; omit for read-only.
+ * `actions`: {set(key, field, value), remove(key), pay(key)}; omit for read-only.
+ * Ticking a payable line or a varying salary opens the pay dialog for the real amount.
  */
 export function LineRow({ line, balanceBase, showBalance = true, lockedHint, actions }) {
   const ro = !actions;
   return (
     <div className={"row" + (line.done ? " done" : "")}>
       {showBalance ? <span className="rail-c"><Dot ratio={line.bal / balanceBase} neg={line.bal < 0} /></span> : <span />}
-      <Checkbox checked={line.done} disabled={ro} onChange={(v) => actions.set(line.key, "done", v)} />
+      <Checkbox checked={line.done} disabled={ro} label={line.done ? (line.flow === "in" ? "Received" : "Paid") + " — untick to undo" : isPayable(line) ? "Mark paid" : asksAmount(line) ? "Mark received" : "Settled"}
+        onChange={(v) => (v && actions.pay && asksAmount(line) ? actions.pay(line.key) : actions.set(line.key, "done", v))} />
       <span className="lbl" title={line.label}>
         {line.flow === "in" && showBalance ? "↑ " : ""}{line.label}
         {line.tag && <span className="tag">{line.tag}</span>}

@@ -71,7 +71,7 @@ export function CardModal({ plan, item, onSave, onClose, onDelete }) {
 export function IncomeModal({ plan, item, onSave, onClose, onDelete }) {
   const initialSplits = (item?.splits?.length ? item.splits : [{ bank: plan.banks[0]?.id || "", amount: "" }]).map((s) => ({ bank: s.bank || "", amount: str(s.amount) }));
   const form = useForm(
-    { name: str(item?.name), splits: initialSplits },
+    { name: str(item?.name), splits: initialSplits, variable: item?.variable ? "varies" : "fixed" },
     (v) => ({
       name: validateName(v.name),
       splits: v.splits.length === 0 ? "Add at least one bank." : v.splits.some((s) => !s.bank || validateAmount(s.amount)) ? "Each portion needs a bank and an amount." : "",
@@ -83,11 +83,20 @@ export function IncomeModal({ plan, item, onSave, onClose, onDelete }) {
   const save = form.guard((v) => onSave({
     ...(item || { id: uid("in"), active: true }), name: v.name.trim(),
     splits: v.splits.map((s) => ({ bank: s.bank, amount: numOr(s.amount) })),
+    variable: v.variable === "varies",
   }));
   return (
     <FormModal title={titleFor(item, "salary")} description="A salary can land in several banks. Add a portion for each."
       submitLabel={item ? "Save" : "Add salary"} onSubmit={save} onClose={onClose} onDelete={onDelete}>
       <NameField form={form} placeholder="e.g. Main job" />
+      <Field label="Amount" hint={form.values.variable === "varies"
+        ? "The amounts below are an estimate. Each month, tick it off and enter what actually came in."
+        : "The same every month."}>
+        <Select value={form.values.variable} onChange={form.set("variable")}>
+          <option value="fixed">Same every month</option>
+          <option value="varies">Varies month to month</option>
+        </Select>
+      </Field>
       {splits.map((sp, ix) => (
         <div className="split-row" key={ix}>
           <Field label={ix === 0 ? "Paid into" : undefined}>
@@ -162,6 +171,7 @@ export const installmentDefaults = (plan, startMonth, item) => ({
   prepaid: str(item?.prepaid ?? ""),
   date: item?.startMonth ? dateInMonth(item.startMonth, item.day) : defaultDateIn(startMonth || firstMonth(plan)),
   via: item ? encodeVia(item.via) : defaultVia(plan),
+  auto: item?.auto ? "auto" : "manual",
 });
 
 export const validateInstallment = (v, plan) => ({
@@ -178,6 +188,7 @@ export const installmentFromForm = (v, item) => {
   const base = { ...(item || { id: uid("i") }), name: v.name.trim(), mode: v.mode, total: numOr(v.total), startMonth: monthOfDate(v.date), day: dayOfDate(v.date), via: decodeVia(v.via) };
   if (v.mode === "term") { base.months = Math.round(numOr(v.months, 1)); delete base.monthly; delete base.prepaid; }
   else { base.monthly = numOr(v.monthly); base.prepaid = numOr(v.prepaid); delete base.months; }
+  if (v.auto === "auto") base.auto = true; else delete base.auto;
   return base;
 };
 
@@ -198,8 +209,8 @@ export function InstallmentModal({ plan, item, startMonth, onSave, onClose, onDe
 export const describe = {
   banks: (plan, b) => ({ sub: b.note || "Bank account", amount: N(b.opening) ? "start " + fmt(b.opening) : "" }),
   incomes: (plan, i) => ({
-    sub: (i.splits || []).map((s) => (plan.banks.find((b) => b.id === s.bank) || {}).name || "—").join(" + "),
-    amount: fmt((i.splits || []).reduce((s, x) => s + N(x.amount), 0)),
+    sub: (i.splits || []).map((s) => (plan.banks.find((b) => b.id === s.bank) || {}).name || "—").join(" + ") + (i.variable ? " · varies" : ""),
+    amount: (i.variable ? "≈ " : "") + fmt((i.splits || []).reduce((s, x) => s + N(x.amount), 0)),
   }),
   wallets: (plan, w) => ({ sub: "From " + ((plan.banks.find((b) => b.id === w.from) || {}).name || "—"), amount: fmt(w.amount) + " / month" }),
   cards: (plan, c) => ({ sub: "Billed to " + ((plan.banks.find((b) => b.id === c.bank) || {}).name || "no bank") + (c.note ? " · " + c.note : ""), amount: "" }),
@@ -209,7 +220,7 @@ export const describe = {
     amount: fmt(t.amount),
   }),
   installments: (plan, it, viaLabel) => ({
-    sub: viaLabel(plan, it.via) + " · " + (it.mode === "term" ? it.months + " months" : fmt(it.monthly) + " / month") + " from " + mShort(it.startMonth) + (it.day ? " · due " + ordinal(it.day) : ""),
+    sub: viaLabel(plan, it.via) + " · " + (it.mode === "term" ? it.months + " months" : fmt(it.monthly) + " / month") + " from " + mShort(it.startMonth) + (it.day ? " · due " + ordinal(it.day) : "") + (it.auto ? " · auto-debit" : ""),
     amount: fmt(it.total),
   }),
 };
