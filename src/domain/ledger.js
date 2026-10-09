@@ -18,6 +18,12 @@ import { versionAt } from "./versions";
 
 export const blankMonth = () => ({ ov: {}, extra: [], adjust: {} });
 
+/** Lines you can settle with a real amount and method: bills, installments, one-offs. */
+export const isPayable = (line) => line.flow === "out" && ["recurring", "installment", "oneoff"].includes(line.origin);
+
+/** Lines that ask for the real amount when ticked: payable ones, and salaries that vary. */
+export const asksAmount = (line) => isPayable(line) || (line.origin === "salary" && line.variable);
+
 /** Effective amount of a line: actual when entered, otherwise plan. */
 export const val = (l) => (l.actual !== null && l.actual !== undefined ? N(l.actual) : N(l.plan));
 
@@ -38,9 +44,11 @@ function computeLines(d, key) {
     const o2 = M.ov[o.key] || {};
     if (o2.removed) return;
     const via = o2.via && o2.via.kind && o2.via.id ? { kind: o2.via.kind, id: o2.via.id } : null; // paid another way this month
+    const done = o2.done !== undefined ? !!o2.done : !!o.autoPaid;
+    const paidOn = done && isDateISO(o2.paidOn) ? (o.flow === "in" ? "received " : "paid ") + dayMonthLabel(o2.paidOn) : null;
     out.push({
       ...o, ...via, plan: o2.plan !== undefined ? o2.plan : o.plan, actual: o2.actual !== undefined ? o2.actual : null,
-      done: o2.done !== undefined ? !!o2.done : !!o.autoPaid,
+      done, tag: [o.tag, paidOn].filter(Boolean).join(" · ") || null,
     });
   };
   const planOf = (k, fallback) => { const o = M.ov[k]; return o && o.plan !== undefined ? o.plan : fallback; };

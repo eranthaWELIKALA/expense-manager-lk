@@ -1,7 +1,6 @@
 import React from "react";
 import { AmountInput, Checkbox, RemoveButton } from "../../components/ui";
-import { fmt } from "../../domain";
-import { asksAmount, isPayable } from "./PayDialog";
+import { asksAmount, fmt, isPayable } from "../../domain";
 
 /** Column headings shared by ledgers and cards. */
 export function LineHeader({ showBalance = true }) {

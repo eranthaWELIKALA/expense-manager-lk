@@ -92,6 +92,9 @@ describe("App", () => {
     await user.type(dateInput, iso);
     expect(within(dlg).getByText(/Scheduled payment · goes into/)).toBeTruthy();
     await user.click(within(dlg).getByRole("button", { name: "Add expense" }));
+    // next month isn't started yet, so it asks first
+    const startDlg = await screen.findByRole("dialog", { name: /^Start / });
+    await user.click(within(startDlg).getByRole("button", { name: /^Start / }));
     expect(await screen.findByText(/“Dentist” added on 15 .* it's in/)).toBeTruthy();
     expect(screen.queryByLabelText("Dentist planned")).toBeNull(); // not in this month
     await user.click(screen.getByRole("button", { name: "Next month" }));

@@ -135,12 +135,13 @@ export function setOverride(d, mk, lineKey, field, value) {
   return withMonth(d, mk, { ...M, ov: { ...M.ov, [lineKey]: { ...(M.ov[lineKey] || {}), [field]: value } } });
 }
 
-/** Mark a line paid in one month with what was actually paid, and how (this month only). */
-export function markPaid(d, mk, lineKey, { actual, via }) {
+/** Mark a line paid in one month with what was actually paid, how (this month only), and optionally when. */
+export function markPaid(d, mk, lineKey, { actual, via, date }) {
   const M = monthOf(d, mk);
   const prev = M.ov[lineKey] || {};
   const next = { ...prev, done: true, actual };
   if (via && via.kind && via.id) next.via = { kind: via.kind, id: via.id };
+  if (isDateISO(date)) next.paidOn = date;
   return withMonth(d, mk, { ...M, ov: { ...M.ov, [lineKey]: next } });
 }
 
@@ -276,6 +277,9 @@ export function viaLabel(d, via) {
 
 /** The first month this plan covers (balances start there). */
 export const firstMonth = (d) => Object.keys(d.months).sort()[0] || d.start || d.active;
+
+/** Months ensureMonthsThrough(d, mk) would add, oldest first (empty when `mk` is already part of the plan). */
+export const monthsToOpen = (d, mk) => Object.keys(ensureMonthsThrough(d, mk).months).filter((k) => !d.months[k]).sort();
 
 /**
  * Make sure `mk` and every month between the last opened month and `mk`

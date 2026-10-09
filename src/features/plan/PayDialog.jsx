@@ -1,15 +1,9 @@
 import React from "react";
 import { FormModal } from "../../components/ui";
 import { useForm } from "../../hooks/useForm";
-import { fmt, mLabel, numOr } from "../../domain";
+import { fmt, isPayable, mLabel, numOr } from "../../domain";
 import { validateAmount } from "../../lib/validation";
 import { MoneyField, PaymentMethodField, decodeVia } from "../editors/fields";
-
-/** Lines you can settle with a real amount and method: bills, installments, one-offs. */
-export const isPayable = (line) => line.flow === "out" && ["recurring", "installment", "oneoff"].includes(line.origin);
-
-/** Lines that ask for the real amount when ticked: payable ones, and salaries that vary. */
-export const asksAmount = (line) => isPayable(line) || (line.origin === "salary" && line.variable);
 
 /**
  * Mark one month's payment as paid (or a varying salary as received): the real amount and, for payments, how.

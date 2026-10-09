@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { Badge, Panel, SectionHeader, StatCard } from "../../components/ui";
+import { useNavigate } from "react-router-dom";
+import { Badge, Banner, Button, Panel, SectionHeader, StatCard } from "../../components/ui";
 import { useProfile } from "../../contexts/ProfileContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useConfirm } from "../../contexts/ConfirmContext";
 import { useViewMonth } from "../../hooks/useViewMonth";
 import {
   computeMonth, fmt, fmtK, mLabel, mShort, nextM, monthRail,
-  setOverride, markPaid, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, dayMonthLabel,
+  N, setOverride, markPaid, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, monthsToOpen, dayMonthLabel,
 } from "../../domain";
 import { ExpenseModal } from "../editors/ExpenseModal";
 import { MonthNav } from "./MonthNav";
@@ -15,6 +16,15 @@ import { Ledger } from "./Ledger";
 import { CardPanel } from "./CardPanel";
 import { RollDialog } from "./RollDialog";
 import { PayDialog } from "./PayDialog";
+import { IncomeReceivedModal, PickItemModal } from "./ActionModals";
+import { useItemEditor } from "../editors/useItemEditor";
+import { useUndo } from "../history/useUndo";
+
+const PICK = {
+  templates: { title: "Change a monthly item", describe: (x) => fmt(x.amount) },
+  incomes: { title: "Change a salary", describe: (x) => (x.variable ? "≈ " : "") + fmt((x.splits || []).reduce((s, p) => s + N(p.amount), 0)) },
+  installments: { title: "Change an installment", describe: (x) => fmt(x.total) },
+};
 
 export default function MonthPage() {
   const { data: plan, update, canEdit } = useProfile();
@@ -22,18 +32,43 @@ export default function MonthPage() {
   const [rolling, setRolling] = useState(false);
   const [adding, setAdding] = useState(false);
   const [paying, setPaying] = useState(null); // line key
+  const [modal, setModal] = useState(null); // Actions menu: "pay" | "income" | "edit:<coll>"
+  const editor = useItemEditor({ startMonth: mk });
+  const undo = useUndo();
+  const navigate = useNavigate();
+
+  const onAction = (a) => {
+    if (a === "undo") undo(0);
+    else if (a === "history") navigate("../history");
+    else setModal(a);
+  };
   const toast = useToast();
   const confirm = useConfirm();
 
   const month = useMemo(() => computeMonth(plan, mk), [plan, mk]);
   const pills = useMemo(() => monthRail(plan, mk), [plan, mk]);
 
-  const selectMonth = (k) => {
-    if (canEdit) update((d) => openMonth(d, k)); // editors extend the balance chain
-    setMonth(k);
+  const opened = !!plan.months[mk];
+
+  /** Ask before adding months to the plan. Resolves true when there's nothing new or the user agrees. */
+  const confirmNewMonths = async (k, reason) => {
+    const added = monthsToOpen(plan, k);
+    if (!added.length) return true;
+    const span = added.length === 1 ? mLabel(added[0]) : `${added.length} months (${mLabel(added[0])} – ${mLabel(added[added.length - 1])})`;
+    return confirm({
+      title: `Start ${mLabel(k)}?`,
+      message: `${reason ? reason + " " : ""}This adds ${span} to your plan. Salaries, monthly items and installments are filled in, and balances carry over from the month before. You can undo it from History.`,
+      confirmLabel: added.length === 1 ? `Start ${mShort(k)}` : `Add ${added.length} months`,
+    });
   };
 
-  const actions = canEdit ? {
+  const startMonth = async () => {
+    if (!(await confirmNewMonths(mk))) return;
+    update((d) => openMonth(ensureMonthsThrough(d, mk), mk), { label: `Started ${mLabel(mk)}` });
+    toast.success(`${mLabel(mk)} started.`);
+  };
+
+  const actions = canEdit && opened ? {
     set: (key, field, value) => {
       const line = month.ls.find((l) => l.key === key);
       const name = line ? line.label : "Item";
@@ -58,8 +93,13 @@ export default function MonthPage() {
       toast.info(`“${line ? line.label : "Item"}” removed from ${mLabel(mk)}.`);
     },
   } : null;
-  const saveExpense = ({ type, item, monthKey }) => {
-    if (type === "once") {
+  const saveExpense = async ({ type, item, monthKey, line, payment }) => {
+    if ((type === "pay" || type === "once") && !(await confirmNewMonths(monthKey, `This payment is in ${mLabel(monthKey)}, which isn't started yet.`))) return; // keep the form open
+    if (type === "pay") {
+      update((d) => markPaid(ensureMonthsThrough(d, monthKey), monthKey, line.key, payment),
+        { label: `${line.label} — paid ${fmt(payment.actual)} on ${dayMonthLabel(payment.date)}` });
+      toast.success(`“${line.label}” marked paid` + (monthKey === mk ? "." : ` in ${mLabel(monthKey)}.`));
+    } else if (type === "once") {
       update((d) => addOneOff(ensureMonthsThrough(d, monthKey), monthKey, item), { label: `Added “${item.name}” (${fmt(item.amount)}) on ${dayMonthLabel(item.date)}` });
       toast.success(`“${item.name}” added on ${dayMonthLabel(item.date)}` + (monthKey === mk ? "." : ` — it's in ${mLabel(monthKey)}.`));
     } else if (type === "monthly") {
@@ -70,7 +110,16 @@ export default function MonthPage() {
       toast.success(`Installment “${item.name}” added from ${mLabel(item.startMonth)}.`);
     }
     setAdding(false);
+    setModal(null);
   };
+  const saveIncome = async ({ monthKey, line, payment }) => {
+    if (!(await confirmNewMonths(monthKey, `This is in ${mLabel(monthKey)}, which isn't started yet.`))) return;
+    update((d) => markPaid(ensureMonthsThrough(d, monthKey), monthKey, line.key, payment),
+      { label: `${line.label} — received ${fmt(payment.actual)} on ${dayMonthLabel(payment.date)}` });
+    toast.success(`“${line.label}” recorded as received` + (monthKey === mk ? "." : ` in ${mLabel(monthKey)}.`));
+    setModal(null);
+  };
+  const editColl = modal && modal.startsWith("edit:") ? modal.slice(5) : null;
 
   const payLine = paying && month.ls.find((l) => l.key === paying);
   const bankName = (id) => (plan.banks.find((b) => b.id === id) || {}).name;
@@ -80,7 +129,15 @@ export default function MonthPage() {
 
   return (
     <>
-      <MonthNav value={mk} items={pills} openedMonths={plan.months} onSelect={selectMonth} onMoveNext={() => setRolling(true)} onAddExpense={() => setAdding(true)} canEdit={canEdit} />
+      <MonthNav value={mk} items={pills} openedMonths={plan.months} onSelect={setMonth} onMoveNext={() => setRolling(true)} onAddExpense={() => setAdding(true)} onAction={onAction} canEdit={canEdit} />
+
+      {!opened && (
+        <div style={{ marginBottom: 16 }}>
+          <Banner tone="info" action={canEdit && <Button size="sm" variant="primary" onClick={startMonth}>Start {mShort(mk)}</Button>}>
+            {mLabel(mk)} isn't part of the plan yet — this is a preview.{canEdit ? " Start it to tick things off and change amounts." : ""}
+          </Banner>
+        </div>
+      )}
 
       <div className="stats">
         <StatCard label="Salaries in" value={fmt(month.earned, 0)} sub={`${activeIncomes} salaries across ${plan.banks.length} banks`} />
@@ -144,6 +201,13 @@ export default function MonthPage() {
       )}
 
       {adding && <ExpenseModal plan={plan} monthKey={mk} onSave={saveExpense} onClose={() => setAdding(false)} />}
+      {modal === "pay" && <ExpenseModal plan={plan} monthKey={mk} initialType="pay" onSave={saveExpense} onClose={() => setModal(null)} />}
+      {modal === "income" && <IncomeReceivedModal plan={plan} monthKey={mk} onSave={saveIncome} onClose={() => setModal(null)} />}
+      {editColl && (
+        <PickItemModal {...PICK[editColl]} items={plan[editColl]} onClose={() => setModal(null)}
+          onPick={(item) => { setModal(null); editor.openEdit(editColl, item); }} />
+      )}
+      {editor.dialogs}
     </>
   );
 }

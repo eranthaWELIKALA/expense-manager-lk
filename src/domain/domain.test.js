@@ -303,3 +303,11 @@ describe("item versions and scoped edits", () => {
     expect(pastBefore(inc, "incomes", "2026-10")).toEqual([{ until: "2026-09", splits: inc.splits, variable: null }]);
   });
 });
+
+describe("recording a payment with a date", () => {
+  it("stores the paid date and shows it on the line", () => {
+    const d = markPaid(plan(), "2026-08", "i:i1", { actual: 100, via: { kind: "bank", id: "b1" }, date: "2026-08-12" });
+    const l = computeMonth(d, "2026-08").ls.find((x) => x.key === "i:i1");
+    expect(l).toMatchObject({ done: true, actual: 100, kind: "bank", tag: "1/12 · paid 12 Aug" });
+  });
+});
