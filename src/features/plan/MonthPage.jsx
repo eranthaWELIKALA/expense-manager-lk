@@ -140,11 +140,11 @@ export default function MonthPage() {
       )}
 
       <div className="stats">
-        <StatCard label="Salaries in" value={fmt(month.earned, 0)} sub={`${activeIncomes} salaries across ${plan.banks.length} banks`} />
-        <StatCard label="Spent this month" value={fmt(month.spent, 0)} subTone={overPlan ? "neg" : "pos"}
+        <StatCard tone="jade" label="Salaries in" value={fmt(month.earned, 0)} sub={`${activeIncomes} salaries across ${plan.banks.length} banks`} />
+        <StatCard tone={overPlan ? "flag" : "acc"} label="Spent this month" value={fmt(month.spent, 0)} subTone={overPlan ? "neg" : "pos"}
           sub={`${overPlan ? "+" : "−"}${fmtK(Math.abs(month.spent - month.planned))} vs plan`} />
-        <StatCard label="By route" value={`${fmtK(month.spentDirect)} · ${fmtK(month.spentCash)} · ${fmtK(month.spentCard)}`} sub="direct · cash · card" />
-        <StatCard label={`Bills due ${nextLabel}`} value={fmt(month.billsNext, 0)} sub="from this month's cards" />
+        <StatCard tone="violet" label="By route" value={`${fmtK(month.spentDirect)} · ${fmtK(month.spentCash)} · ${fmtK(month.spentCard)}`} sub="direct · cash · card" />
+        <StatCard tone="brass" label={`Bills due ${nextLabel}`} value={fmt(month.billsNext, 0)} sub="from this month's cards" />
         <StatCard highlight label="Left in the banks" value={fmt(month.inBank, 0)}
           sub={`${fmtK(month.inCash)} cash · ${month.open} line${month.open === 1 ? "" : "s"} open`} />
       </div>

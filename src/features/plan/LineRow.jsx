@@ -13,7 +13,7 @@ export function LineHeader({ showBalance = true }) {
 }
 
 const Dot = ({ ratio, neg }) => (
-  <span className="dot" style={{ background: neg ? "var(--flag)" : ratio > 0.4 ? "var(--jade)" : ratio > 0.15 ? "#C9A227" : "var(--flag)" }} />
+  <span className="dot" style={{ background: neg ? "var(--flag)" : ratio > 0.4 ? "var(--jade)" : ratio > 0.15 ? "var(--brass)" : "var(--flag)" }} />
 );
 
 /**
@@ -29,7 +29,7 @@ export function LineRow({ line, balanceBase, showBalance = true, lockedHint, act
       <Checkbox checked={line.done} disabled={ro} label={line.done ? (line.flow === "in" ? "Received" : "Paid") + " — untick to undo" : isPayable(line) ? "Mark paid" : asksAmount(line) ? "Mark received" : "Settled"}
         onChange={(v) => (v && actions.pay && asksAmount(line) ? actions.pay(line.key) : actions.set(line.key, "done", v))} />
       <span className="lbl" title={line.label}>
-        {line.flow === "in" && showBalance ? "↑ " : ""}{line.label}
+        {line.flow === "in" && showBalance && <span className="in" aria-label="incoming">↑</span>}{line.label}
         {line.tag && <span className="tag">{line.tag}</span>}
       </span>
       <span className="nums">

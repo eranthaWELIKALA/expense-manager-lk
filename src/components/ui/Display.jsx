@@ -16,9 +16,10 @@ export function Chip({ tone, label, value }) {
   );
 }
 
-export function StatCard({ label, value, sub, highlight = false, subTone }) {
+/** tone: jade | flag | violet | brass | acc — a coloured edge. */
+export function StatCard({ label, value, sub, highlight = false, subTone, tone }) {
   return (
-    <div className={cx("stat", highlight && "hi")}>
+    <div className={cx("stat", highlight && "hi", tone && "t-" + tone)}>
       <label>{label}</label>
       <div className="v">{value}</div>
       {sub && <div className={cx("sub", subTone)}>{sub}</div>}

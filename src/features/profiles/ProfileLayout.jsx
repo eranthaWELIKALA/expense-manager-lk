@@ -38,17 +38,21 @@ function ProfileFrame() {
   return (
     <>
       <div className="phdr">
-        <h1 className="phdr-name">{meta.name}</h1>
-        <span className="mut phdr-cur">{meta.currency}</span>
-        {meta.role !== "owner" && <Badge tone="acc">{roleLabel(meta.role)}</Badge>}
-        <SaveIndicator />
-        <NavTabs keepSearch items={[
-          { to: base + "/month", label: "Month" },
-          { to: base + "/commitments", label: "Commitments" },
-          { to: base + "/setup", label: "Setup" },
-          { to: base + "/history", label: "History" },
-        ]} />
-        <Link className="btn sm" to={`/settings/profiles/${profileId}`}>{isOwner ? "Share" : "Details"}</Link>
+        <div className="phdr-id">
+          <h1 className="phdr-name">{meta.name}</h1>
+          <span className="mut phdr-cur">{meta.currency}</span>
+          {meta.role !== "owner" && <Badge tone="acc">{roleLabel(meta.role)}</Badge>}
+          <SaveIndicator />
+          <Link className="btn phdr-share" to={`/settings/profiles/${profileId}`}>{isOwner ? "Share" : "Details"}</Link>
+        </div>
+        <div className="phdr-nav">
+          <NavTabs keepSearch items={[
+            { to: base + "/month", label: "Month" },
+            { to: base + "/commitments", label: "Commitments" },
+            { to: base + "/setup", label: "Setup" },
+            { to: base + "/history", label: "History" },
+          ]} />
+        </div>
       </div>
       {!canEdit && <Banner tone="info">You have view-only access to this profile.</Banner>}
       <SuspenseOutlet />

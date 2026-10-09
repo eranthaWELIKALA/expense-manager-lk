@@ -50,7 +50,7 @@ export function Menu({ trigger, children, align = "right" }) {
 }
 
 export function MenuItem({ as: As = "button", children, className, ...rest }) {
-  return <As role="menuitem" data-close className={cx("menu-item", className)} {...rest}>{children}</As>;
+  return <As role="menuitem" type={As === "button" ? "button" : undefined} data-close className={cx("menu-item", className)} {...rest}>{children}</As>;
 }
 
 /** Radio group styled as a segmented control. options: [{value, label, hint?}] */

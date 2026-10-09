@@ -1,22 +1,83 @@
-/* Design tokens + resets. Everything is scoped under .mmp (the app root). */
+/* Design tokens + resets.
+   Tokens live on :root so the page background and native controls follow the theme.
+   Theme: <html data-theme="light|dark">, or no attribute to follow the system (see hooks/useTheme.js). */
+
+:root{
+  color-scheme:light;
+  /* surfaces */
+  --bg:#F3F5F9; --card:#FFFFFF; --paper:#F1F4F9; --hover:#F7F9FC; --input:#FFFFFF;
+  --line:#E2E7EF; --line2:#EDF0F5;
+  /* text */
+  --ink:#0F172A; --ink2:#46546C; --mute:#66748C; --faint:#A3AEC2;
+  /* brand + semantic (S = soft fill, B = soft border) */
+  --acc:#4F46E5; --accH:#4338CA; --accS:#EEF0FF; --accB:#C9CDFB; --onAcc:#FFFFFF;
+  --jade:#047857; --jadeS:#E7F7F0; --jadeB:#B5E3CF;
+  --flag:#C8323F; --flagS:#FDEDEE; --flagB:#F3C2C7;
+  --brass:#A15C07; --brassS:#FDF5E6; --brassB:#EED8AE;
+  --violet:#6D3FD1; --violetS:#F3EFFD; --violetB:#D8CCF5;
+  --hi:linear-gradient(135deg,#4F46E5 0%,#6D5CF0 100%); --onHi:#FFFFFF; --onHiMute:rgba(255,255,255,.72);
+  /* depth */
+  --shadow-sm:0 1px 2px rgba(15,23,42,.05);
+  --shadow:0 1px 3px rgba(15,23,42,.06),0 1px 2px rgba(15,23,42,.04);
+  --shadow-lg:0 24px 60px rgba(15,23,42,.20),0 4px 14px rgba(15,23,42,.08);
+  --overlay:rgba(15,23,42,.45);
+  --topbar:rgba(243,245,249,.82);
+  /* shape */
+  --r-sm:8px; --r:12px; --r-lg:16px;
+}
+
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0B1020; --card:#121A2B; --paper:#18223A; --hover:#162036; --input:#0F1626;
+  --line:#26314A; --line2:#1D2740;
+  --ink:#E7EBF4; --ink2:#B6C0D4; --mute:#8D99B2; --faint:#5D6A86;
+  --acc:#8B93FF; --accH:#A5ABFF; --accS:rgba(139,147,255,.14); --accB:rgba(139,147,255,.34); --onAcc:#0B1020;
+  --jade:#3DD6A0; --jadeS:rgba(61,214,160,.12); --jadeB:rgba(61,214,160,.32);
+  --flag:#FF7A85; --flagS:rgba(255,122,133,.12); --flagB:rgba(255,122,133,.34);
+  --brass:#F5B94A; --brassS:rgba(245,185,74,.12); --brassB:rgba(245,185,74,.32);
+  --violet:#B79CFF; --violetS:rgba(183,156,255,.13); --violetB:rgba(183,156,255,.32);
+  --hi:linear-gradient(135deg,#4C46D6 0%,#7357E8 100%); --onHi:#FFFFFF; --onHiMute:rgba(255,255,255,.7);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.3);
+  --shadow:0 1px 3px rgba(0,0,0,.35);
+  --shadow-lg:0 24px 60px rgba(0,0,0,.55);
+  --overlay:rgba(3,6,15,.66);
+  --topbar:rgba(11,16,32,.82);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0B1020; --card:#121A2B; --paper:#18223A; --hover:#162036; --input:#0F1626;
+    --line:#26314A; --line2:#1D2740;
+    --ink:#E7EBF4; --ink2:#B6C0D4; --mute:#8D99B2; --faint:#5D6A86;
+    --acc:#8B93FF; --accH:#A5ABFF; --accS:rgba(139,147,255,.14); --accB:rgba(139,147,255,.34); --onAcc:#0B1020;
+    --jade:#3DD6A0; --jadeS:rgba(61,214,160,.12); --jadeB:rgba(61,214,160,.32);
+    --flag:#FF7A85; --flagS:rgba(255,122,133,.12); --flagB:rgba(255,122,133,.34);
+    --brass:#F5B94A; --brassS:rgba(245,185,74,.12); --brassB:rgba(245,185,74,.32);
+    --violet:#B79CFF; --violetS:rgba(183,156,255,.13); --violetB:rgba(183,156,255,.32);
+    --hi:linear-gradient(135deg,#4C46D6 0%,#7357E8 100%); --onHi:#FFFFFF; --onHiMute:rgba(255,255,255,.7);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.3);
+    --shadow:0 1px 3px rgba(0,0,0,.35);
+    --shadow-lg:0 24px 60px rgba(0,0,0,.55);
+    --overlay:rgba(3,6,15,.66);
+    --topbar:rgba(11,16,32,.82);
+  }
+}
+
+body{margin:0;background:var(--bg);color:var(--ink)}
+
 .mmp{
-  --ink:#141B2B; --ink2:#41506B; --mute:#7C89A3;
-  --paper:#EEF1F7; --card:#FFFFFF; --line:#DDE3EE; --line2:#EDF0F6;
-  --jade:#0F7A5F; --jadeS:#E3F3ED;
-  --flag:#BB3A46; --flagS:#FBE9EB;
-  --brass:#8A6210; --brassS:#F7EFDB;
-  --acc:#2A4796; --accS:#E9EDFA;
-  --violet:#5B3E9B; --violetS:#EFE9FA;
   font-family:'Inter',system-ui,-apple-system,sans-serif;
-  color:var(--ink); background:var(--paper);
+  color:var(--ink); background:var(--bg);
   min-height:100vh; font-size:14px; line-height:1.45;
   -webkit-font-smoothing:antialiased;
 }
 .mmp *{box-sizing:border-box}
-.mmp button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
-.mmp input,.mmp select{font:inherit;color:inherit}
+/* :where() keeps these resets at zero specificity so component classes (.btn, .chk, …) win. */
+:where(.mmp) :where(button){font:inherit;color:inherit;cursor:pointer;border:none;background:none;padding:0}
+:where(.mmp) :where(input,select,textarea){font:inherit;color:inherit}
 .mmp .n{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .mmp h1,.mmp h2,.mmp h3{font-family:'Space Grotesk',system-ui,sans-serif;letter-spacing:-.015em;margin:0}
+.mmp ::selection{background:var(--accB)}
 
-.wrap{max-width:1320px;margin:0 auto;padding:18px 16px 80px}
-body{margin:0;background:#EEF1F7}
+.wrap{max-width:1320px;margin:0 auto;padding:0 20px 80px}
+@media(max-width:600px){.wrap{padding:0 12px 72px}}

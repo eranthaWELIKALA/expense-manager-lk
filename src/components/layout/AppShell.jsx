@@ -14,7 +14,10 @@ export function AppShell() {
   return (
     <div className="wrap">
       <header className="top">
-        <Link to="/" className="brand"><b>Monthly Money Plan</b><span>by bank account</span></Link>
+        <Link to="/" className="brand" aria-label="Monthly Money Plan — home">
+          <span className="brand-mark" aria-hidden>M</span>
+          <span className="brand-txt"><b>Monthly Money Plan</b><span>by bank account</span></span>
+        </Link>
         {ready && <ProfileSwitcher />}
         <div className="top-end">{ready && <UserMenu />}</div>
       </header>

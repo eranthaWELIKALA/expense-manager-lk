@@ -55,7 +55,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("Saved")).toBeTruthy(), { timeout: 3000 });
 
     // record payment: search finds an existing bill and marks it paid
-    await user.click(screen.getByRole("button", { name: "+ Record payment" }));
+    await user.click(screen.getByRole("button", { name: "Record payment" }));
     let dlg = await screen.findByRole("dialog", { name: "Record payment" });
     await user.type(within(dlg).getByRole("combobox", { name: "What for" }), "Ren");
     await user.click(within(dlg).getByRole("option", { name: /^Rent/ }));
@@ -64,7 +64,7 @@ describe("App", () => {
     expect(await screen.findByText(/“Rent” marked paid/)).toBeTruthy();
 
     // record payment: validation, then something new becomes a paid one-time cash spend
-    await user.click(screen.getByRole("button", { name: "+ Record payment" }));
+    await user.click(screen.getByRole("button", { name: "Record payment" }));
     dlg = await screen.findByRole("dialog", { name: "Record payment" });
     await user.click(within(dlg).getByRole("button", { name: "Record payment" }));
     expect(within(dlg).getByText("What for is required.")).toBeTruthy();
@@ -93,7 +93,7 @@ describe("App", () => {
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 15);
     const iso = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-15`;
-    await user.click(screen.getByRole("button", { name: "+ Record payment" }));
+    await user.click(screen.getByRole("button", { name: "Record payment" }));
     dlg = await screen.findByRole("dialog", { name: "Record payment" });
     await user.type(within(dlg).getByRole("combobox", { name: "What for" }), "Dentist");
     await user.type(within(dlg).getByLabelText("Amount"), "8000");

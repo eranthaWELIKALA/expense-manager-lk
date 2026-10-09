@@ -19,7 +19,9 @@ export default function SetupPage() {
   const editor = useItemEditor({ startMonth: mk });
   return (
     <>
-      {SECTIONS.map((s) => <ItemList key={s.coll} plan={plan} editor={editor} {...s} />)}
+      <div className="setup-grid">
+        {SECTIONS.map((s) => <ItemList key={s.coll} plan={plan} editor={editor} {...s} />)}
+      </div>
       {editor.dialogs}
     </>
   );

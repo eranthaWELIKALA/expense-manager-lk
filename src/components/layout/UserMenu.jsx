@@ -5,12 +5,14 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useWorkspace } from "../../contexts/WorkspaceContext";
 import { errorMessage } from "../../services/errors";
+import { THEMES, useTheme } from "../../hooks/useTheme";
 
 export function UserMenu() {
   const { signOut } = useAuth();
   const { account, incoming } = useWorkspace();
   const navigate = useNavigate();
   const toast = useToast();
+  const [theme, setTheme] = useTheme();
 
   const doSignOut = async () => {
     try { await signOut(); navigate("/sign-in", { replace: true }); } catch (e) { toast.error(errorMessage(e)); }
@@ -34,6 +36,15 @@ export function UserMenu() {
         <span className="menu-grow">Invitations</span>
         {incoming.length > 0 && <span className="dot-badge inline">{incoming.length}</span>}
       </MenuItem>
+      <MenuDivider />
+      <MenuLabel>Theme</MenuLabel>
+      {THEMES.map((t) => (
+        <MenuItem key={t.value} className={theme === t.value ? "on" : undefined} aria-checked={theme === t.value} role="menuitemradio" onClick={() => setTheme(t.value)}>
+          <span className="mi" aria-hidden>{{ system: "◐", light: "☀", dark: "☾" }[t.value]}</span>
+          <span className="menu-grow">{t.label}</span>
+          {theme === t.value && <span className="menu-check" aria-hidden>✓</span>}
+        </MenuItem>
+      ))}
       <MenuDivider />
       <MenuItem onClick={doSignOut}>Sign out</MenuItem>
     </Menu>
