@@ -114,6 +114,26 @@ describe("App", () => {
     expect(await screen.findByLabelText("Dentist planned")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Previous month" }));
 
+    // move money: get cash out of a bank
+    await user.click(screen.getByRole("button", { name: "Move money" }));
+    dlg = await screen.findByRole("dialog", { name: "Move money" });
+    await user.type(within(dlg).getByLabelText("Amount"), "10000");
+    await user.click(within(dlg).getByRole("button", { name: "Record" }));
+    expect(await screen.findByText(/Withdrew cash 10,000: Main current → Daily cash/)).toBeTruthy();
+
+    // what-if: a big payment shows whether it fits, then is dropped
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(screen.getByRole("menuitem", { name: /What if/ }));
+    dlg = await screen.findByRole("dialog", { name: "New expense" });
+    await user.type(within(dlg).getByLabelText("What for"), "Holiday");
+    await user.type(within(dlg).getByLabelText("Amount"), "999999");
+    await user.selectOptions(within(dlg).getByLabelText("Pay with"), within(dlg).getByRole("option", { name: "Main current" }));
+    await user.click(within(dlg).getByRole("button", { name: "Try it" }));
+    expect(await screen.findByText(/1 what-if in/)).toBeTruthy();
+    expect(screen.getByText(/Main current would go below zero/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Drop all" }));
+    await waitFor(() => expect(screen.queryByText(/1 what-if in/)).toBeNull());
+
     // new expense: installment on a card
     await user.click(screen.getByRole("button", { name: "New expense" }));
     dlg = await screen.findByRole("dialog", { name: "New expense" });

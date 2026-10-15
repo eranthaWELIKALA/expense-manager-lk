@@ -114,6 +114,7 @@ export function normalizePlan(raw) {
     out.months[k] = {
       ov: isObj(M.ov) ? M.ov : {},
       extra: Array.isArray(M.extra) ? M.extra.filter(isObj) : [],
+      transfers: Array.isArray(M.transfers) ? M.transfers.filter((t) => isObj(t) && typeof t.id === "string" && isObj(t.to)) : [],
       adjust: isObj(M.adjust) ? M.adjust : {},
     };
   }
@@ -249,16 +250,78 @@ export function removeLine(d, mk, lineKey) {
     const id = lineKey.slice(2);
     return withMonth(d, mk, { ...M, extra: (M.extra || []).filter((e) => e.id !== id) });
   }
+  if (lineKey.startsWith("tx:") || lineKey.startsWith("ti:")) { // either side removes the whole transfer
+    const id = lineKey.slice(3);
+    return withMonth(d, mk, { ...M, transfers: (M.transfers || []).filter((t) => t.id !== id) });
+  }
   return setOverride(d, mk, lineKey, "removed", true);
 }
 
-/** Add a one-off payment to a single month; `paid` records it as already paid (on `date`). */
-export function addOneOff(d, mk, { kind, targetId, name, amount, date, paid = false }) {
+/**
+ * Add a one-off payment to a single month; `paid` records it as already paid (on `date`).
+ * `maybe` makes it a what-if: counted in balances so you can see if it fits, until it's made real or removed.
+ */
+export function addOneOff(d, mk, { kind, targetId, name, amount, date, paid = false, maybe = false }) {
   const M = monthOf(d, mk);
   const item = { id: uid("x"), name: String(name).slice(0, 120), amount, kind, id2: targetId, flow: "out" };
   if (isDateISO(date)) item.date = date;
+  if (maybe) { item.maybe = true; paid = false; }
   const ov = paid ? { ...M.ov, ["x:" + item.id]: { done: true, ...(isDateISO(date) ? { paidOn: date } : {}) } } : M.ov;
   return withMonth(d, mk, { ...M, ov, extra: [...(M.extra || []), item] });
+}
+
+/** Turn a what-if one-off into a planned payment. */
+export function makeReal(d, mk, lineKey) {
+  const M = monthOf(d, mk);
+  const id = lineKey.slice(2);
+  return withMonth(d, mk, { ...M, extra: (M.extra || []).map((e) => (e.id === id ? (({ maybe: _m, ...rest }) => rest)(e) : e)) });
+}
+
+/** The plan without any what-ifs (to compare balances with and without them). Memoised per plan object. */
+const NO_MAYBE = new WeakMap();
+export function withoutMaybes(d) {
+  if (NO_MAYBE.has(d)) return NO_MAYBE.get(d);
+  let changed = false;
+  const months = {};
+  Object.keys(d.months).forEach((k) => {
+    const M = d.months[k];
+    if ((M.extra || []).some((e) => e.maybe)) { changed = true; months[k] = { ...M, extra: M.extra.filter((e) => !e.maybe) }; }
+    else months[k] = M;
+  });
+  const r = changed ? { ...d, months } : d;
+  NO_MAYBE.set(d, r);
+  return r;
+}
+
+/**
+ * Record money moving between your accounts, or in from outside (`from` null).
+ * from/to: {kind: "bank"|"cash"|"card", id}. Settled at once.
+ */
+export function addTransfer(d, mk, { from, to, amount, date, note }) {
+  const M = monthOf(d, mk);
+  const t = { id: uid("tr"), from: from && from.kind && from.id ? { kind: from.kind, id: from.id } : null, to: { kind: to.kind, id: to.id }, amount };
+  if (isDateISO(date)) t.date = date;
+  if (note && String(note).trim()) t.note = String(note).trim().slice(0, 80);
+  return withMonth(d, mk, { ...M, transfers: [...(M.transfers || []), t] });
+}
+
+/**
+ * Pay a card from a bank: settles what's left of this month's card bill first
+ * (in full or as a part, from any bank), and anything beyond that is paid ahead —
+ * it lowers what the card bills next month.
+ * Returns {plan, toBill, ahead}.
+ */
+export function payCard(d, mk, { cardId, bankId, amount, date }) {
+  const bill = lines(d, mk).find((l) => l.key === "b:" + cardId);
+  let plan = d, toBill = 0;
+  if (bill && !bill.done) {
+    toBill = Math.min(amount, bill.remaining > 0.005 ? bill.remaining : 0);
+    if (toBill > 0.005) plan = recordPayment(plan, mk, bill.key, { amount: toBill, via: { kind: "bank", id: bankId }, date });
+    else toBill = 0;
+  }
+  const ahead = Math.round((amount - toBill) * 100) / 100;
+  if (ahead > 0.005) plan = addTransfer(plan, mk, { from: { kind: "bank", id: bankId }, to: { kind: "card", id: cardId }, amount: ahead, date });
+  return { plan, toBill, ahead: ahead > 0.005 ? ahead : 0 };
 }
 
 /** Make a month part of the chain (so balances carry into it) and track the latest one opened. */

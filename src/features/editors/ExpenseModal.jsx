@@ -164,23 +164,27 @@ export function RecordPaymentModal({ plan, monthKey, fixedLine, onSave, onRemove
 const TYPES = [
   { value: "monthly", label: "Every month", hint: "Recurring bill" },
   { value: "installment", label: "Installment", hint: "Split over months" },
+  { value: "maybe", label: "What if…", hint: "See if it fits a month" },
 ];
 
 function describeStart(v) {
   if (!isDateISO(v.date)) return "Pick a date.";
+  if (v.type === "maybe") return `Counted in ${mLabel(monthOfDate(v.date))}'s balances as a what-if, so you can see whether it fits. Keep it or drop it afterwards.`;
   if (v.type === "monthly" && v.budget === "budget") return `A budget every month from ${mLabel(monthOfDate(v.date))}. Earlier months aren't changed.`;
   if (v.type === "monthly") return `Every month from ${mLabel(monthOfDate(v.date))}, due on day ${dayOfDate(v.date)}. Earlier months aren't changed.`;
   return `First payment ${dayMonthLabel(v.date)} ${monthOfDate(v.date).slice(0, 4)}, then monthly.`;
 }
 
 /**
- * Set up a new expense that repeats: every month, or an installment.
+ * Set up a new expense that repeats (every month, or an installment), or try a
+ * one-time what-if in a month to see whether it fits.
  * onSave({type: "monthly" | "installment", item})
+ *      | ({type: "maybe", monthKey, item: {name, amount, kind, targetId, date}})
  */
-export function NewExpenseModal({ plan, monthKey, onSave, onClose }) {
+export function NewExpenseModal({ plan, monthKey, initialType = "monthly", onSave, onClose }) {
   const minDate = minDateFor(firstMonth(plan));
   const form = useForm(
-    { type: "monthly", amount: "", budget: "one", ...installmentDefaults(plan, monthKey) },
+    { type: initialType, amount: "", budget: "one", ...installmentDefaults(plan, monthKey) },
     (v) => (v.type === "installment"
       ? validateInstallment(v, plan)
       : {
@@ -194,6 +198,10 @@ export function NewExpenseModal({ plan, monthKey, onSave, onClose }) {
 
   const save = form.guard((vals) => {
     if (vals.type === "installment") return onSave({ type: vals.type, item: installmentFromForm(vals) });
+    if (vals.type === "maybe") {
+      const via = decodeVia(vals.via);
+      return onSave({ type: "maybe", monthKey: monthOfDate(vals.date), item: { name: vals.name.trim(), amount: numOr(vals.amount), kind: via.kind, targetId: via.id, date: vals.date } });
+    }
     return onSave({
       type: vals.type,
       item: {
@@ -204,13 +212,16 @@ export function NewExpenseModal({ plan, monthKey, onSave, onClose }) {
   });
 
   return (
-    <FormModal title="New expense" description={describeStart(v)} submitLabel={v.type === "installment" ? "Add installment" : "Add expense"} onSubmit={save} onClose={onClose}>
+    <FormModal title="New expense" description={describeStart(v)} onSubmit={save} onClose={onClose}
+      submitLabel={v.type === "installment" ? "Add installment" : v.type === "maybe" ? "Try it" : "Add expense"}>
       <Segmented label="Expense type" options={TYPES} value={v.type} onChange={(t) => form.set("type", t)} />
-      <NameField form={form} label="What for" placeholder={v.type === "installment" ? "e.g. Laptop" : v.budget === "budget" ? "e.g. Cricket" : "e.g. Electricity"} />
+      <NameField form={form} label="What for" placeholder={v.type === "installment" ? "e.g. Laptop" : v.type === "maybe" ? "e.g. New phone" : v.budget === "budget" ? "e.g. Cricket" : "e.g. Electricity"} />
       <div className="form-grid">
         <PaymentMethodField plan={plan} form={form} label="Pay with" />
         {v.type === "monthly" && <MoneyField form={form} label={v.budget === "budget" ? "Budget each month" : "Amount each month"} />}
         {v.type === "monthly" && <DateField form={form} label={v.budget === "budget" ? "Starts" : "First payment"} min={minDate} />}
+        {v.type === "maybe" && <MoneyField form={form} label="Amount" />}
+        {v.type === "maybe" && <DateField form={form} label="When" min={minDate} />}
         {v.type === "monthly" && <PaidHowField form={form} />}
       </div>
       {v.type === "installment" && <InstallmentFields form={form} minDate={minDate} />}

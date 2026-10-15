@@ -4,8 +4,9 @@ import { accountLogo } from "../../lib/banks";
  * Lines still waiting for a tick. Part payments are already paid, and the receiving side
  * of a withdrawal ("wi:") or a move between banks ("tm:") is ticked at its source.
  * (Installments and card bills are locked — their amount is set elsewhere — but still need ticking.)
+ * What-ifs aren't real yet, so they don't wait for a tick either.
  */
-export const isOpen = (l) => !l.done && l.origin !== "part" && !/^(wi|tm):/.test(l.key);
+export const isOpen = (l) => !l.done && !l.maybe && l.origin !== "part" && !/^(wi|tm):/.test(l.key);
 
 /**
  * Every bank, cash pot and card in a computed month, as one list for the month view.
@@ -30,7 +31,7 @@ export function monthAccounts(plan, month) {
       key: "card:" + C.o.id, kind: "card", o: C.o, name: C.o.name, rows: C.rows,
       logo: accountLogo(plan, "card", C.o),
       note: C.o.note || "", bankName: bankName(C.o.bank),
-      plan: C.plan, due: C.due, balance: C.due, over: C.actual > C.plan + 0.005 && C.actual > 0,
+      plan: C.plan, charged: C.charged, paid: C.paid, due: C.due, balance: C.due, over: C.actual > C.plan + 0.005 && C.actual > 0,
       short: false, open: C.rows.filter(isOpen).length,
     })),
   };

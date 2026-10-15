@@ -46,7 +46,12 @@ export function AccountDetail({ account, openRows, actions, openOnly, onOpenOnly
         : a.note,
     };
     stats = card
-      ? [<Stat key="c" label="This month" value={fmt(a.due, 0)} />, <Stat key="p" label="Planned" value={fmt(a.plan, 0)} />, <Stat key="b" label={"Bills in " + nextLabel} value={a.bankName || "—"} text />]
+      ? [
+        <Stat key="c" label="Charged" value={fmt(a.charged, 0)} />,
+        <Stat key="p" label="Planned" value={fmt(a.plan, 0)} />,
+        ...(a.paid > 0.005 ? [<Stat key="a" label="Paid ahead" value={fmt(a.paid, 0)} tone="pos" />] : []),
+        <Stat key="b" label={"To bill in " + nextLabel} value={fmt(a.due, 0)} />,
+      ]
       : [
         <Stat key="o" label="Brought forward" value={fmt(a.opening, 0)} />,
         <Stat key="i" label="In" value={fmt(a.inSum, 0)} tone="pos" />,

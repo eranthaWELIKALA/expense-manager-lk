@@ -53,10 +53,10 @@ export function MenuItem({ as: As = "button", children, className, ...rest }) {
   return <As role="menuitem" type={As === "button" ? "button" : undefined} data-close className={cx("menu-item", className)} {...rest}>{children}</As>;
 }
 
-/** Radio group styled as a segmented control. options: [{value, label, hint?}] */
-export function Segmented({ options, value, onChange, label }) {
+/** Radio group styled as a segmented control. options: [{value, label, hint?}]; className "wrap" lets many options wrap. */
+export function Segmented({ options, value, onChange, label, className }) {
   return (
-    <div className="seg" role="radiogroup" aria-label={label}>
+    <div className={cx("seg", className)} role="radiogroup" aria-label={label}>
       {options.map((o) => (
         <button key={o.value} type="button" role="radio" aria-checked={value === o.value}
           className={cx("seg-opt", value === o.value && "on")} onClick={() => onChange(o.value)}>

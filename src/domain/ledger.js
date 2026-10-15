@@ -16,7 +16,27 @@ import { N, fmt } from "./format";
 import { instFor } from "./installments";
 import { versionAt } from "./versions";
 
-export const blankMonth = () => ({ ov: {}, extra: [], adjust: {} });
+export const blankMonth = () => ({ ov: {}, extra: [], transfers: [], adjust: {} });
+
+/* Recorded money movements between your own accounts (or in from outside), per month:
+   M.transfers = [{id, from: {kind, id} | null (money from outside), to: {kind, id}, amount, date?, note?}]
+   Each shows as a line in both accounts and is settled as soon as it's recorded. */
+
+/** Name of a bank / cash pot / card. */
+const accountName = (d, ref) => {
+  if (!ref) return "outside";
+  const list = ref.kind === "card" ? d.cards : ref.kind === "cash" ? d.wallets : d.banks;
+  return ((list || []).find((x) => x.id === ref.id) || {}).name || "—";
+};
+
+/** How a transfer reads, from each side. */
+export function transferLabels(d, t) {
+  const from = t.from ? t.from.kind : null, to = t.to.kind;
+  const verb = !from ? "Money in" : to === "card" ? "Card payment"
+    : from === "bank" && to === "cash" ? "Cash withdrawn" : from === "cash" && to === "bank" ? "Cash deposited" : "Transfer";
+  const head = t.note ? t.note : verb;
+  return { out: head + " → " + accountName(d, t.to), in: head + (t.from ? " ← " + accountName(d, t.from) : "") };
+}
 
 /** Lines you can settle with a real amount and method: bills, installments, one-offs. */
 export const isPayable = (line) => line.flow === "out" && ["recurring", "installment", "oneoff"].includes(line.origin);
@@ -140,15 +160,31 @@ function computeLines(d, key) {
   (M.extra || []).forEach((e) => {
     const dated = isDateISO(e.date);
     push({ key: "x:" + e.id, label: e.name, kind: e.kind, id: e.id2, flow: e.flow || "out", plan: N(e.amount), origin: "oneoff",
-      tag: dated ? dayMonthLabel(e.date) : null, day: dated ? dayOfDate(e.date) : null, date: dated ? e.date : null });
+      tag: joinTags(e.maybe ? "what-if" : null, dated ? dayMonthLabel(e.date) : null), day: dated ? dayOfDate(e.date) : null, date: dated ? e.date : null,
+      ...(e.maybe ? { maybe: true } : {}) });
+  });
+
+  /* transfers: out of one account, into another (or in from outside) */
+  (M.transfers || []).forEach((t) => {
+    if (!t || !t.to || !(N(t.amount) > 0)) return;
+    const dated = isDateISO(t.date);
+    const at = { plan: N(t.amount), origin: "transfer", locked: true, autoPaid: true, tag: dated ? dayMonthLabel(t.date) : null,
+      day: dated ? dayOfDate(t.date) : null, date: dated ? t.date : null };
+    const label = transferLabels(d, t);
+    if (t.from) push({ key: "tx:" + t.id, label: label.out, kind: t.from.kind, id: t.from.id, flow: "out", ...at });
+    push({ key: "ti:" + t.id, label: label.in, kind: t.to.kind, id: t.to.id, flow: "in", ...at });
   });
 
   return out;
 }
 
+/** What a card owes for a month: its charges less anything paid onto it that month (never below zero). */
 export function cardTotal(d, key, cardId) {
   if (!d.months[key]) return 0;
-  return lines(d, key).filter((l) => l.kind === "card" && l.id === cardId).reduce((s, l) => s + val(l), 0);
+  const ls = lines(d, key).filter((l) => l.kind === "card" && l.id === cardId);
+  const charged = ls.filter((l) => l.flow !== "in").reduce((s, l) => s + val(l), 0);
+  const paid = ls.filter((l) => l.flow === "in").reduce((s, l) => s + val(l), 0);
+  return Math.max(0, charged - paid);
 }
 
 /* month results, memoised — openings chain backwards through the months you've opened */
@@ -178,7 +214,7 @@ function openingFor(d, key, kind, id, depth) {
 }
 
 const ORIGIN_ORDER = { salary: 0, move: 1, bill: 2, recurring: 3, installment: 3, part: 3, oneoff: 4, withdrawal: 5 };
-const isSpend = (l) => l.flow === "out" && l.origin !== "bill" && l.origin !== "withdrawal" && l.origin !== "move";
+const isSpend = (l) => l.flow === "out" && !["bill", "withdrawal", "move", "transfer"].includes(l.origin);
 
 function doMonth(d, key, depth) {
   const ls = lines(d, key);
@@ -195,18 +231,22 @@ function doMonth(d, key, depth) {
   const wallets = (d.wallets || []).map((w) => build("cash", w));
   const cards = (d.cards || []).map((c) => {
     const rows = ls.filter((l) => l.kind === "card" && l.id === c.id);
+    const charges = rows.filter((l) => l.flow !== "in");
+    const charged = charges.reduce((s, l) => s + val(l), 0);
+    const paid = rows.filter((l) => l.flow === "in").reduce((s, l) => s + val(l), 0); // paid ahead this month
     return {
       o: c, rows,
-      plan: rows.reduce((s, l) => s + N(l.plan), 0),
-      actual: rows.reduce((s, l) => s + (l.actual !== null && l.actual !== undefined ? N(l.actual) : 0), 0),
-      due: rows.reduce((s, l) => s + val(l), 0),
+      plan: charges.reduce((s, l) => s + N(l.plan), 0),
+      actual: charges.reduce((s, l) => s + (l.actual !== null && l.actual !== undefined ? N(l.actual) : 0), 0),
+      charged, paid,
+      due: Math.max(0, charged - paid), // what it bills next month
     };
   });
 
   const earned = ls.filter((l) => l.origin === "salary").reduce((s, l) => s + val(l), 0);
   const spentDirect = ls.filter((l) => l.kind === "bank" && isSpend(l)).reduce((s, l) => s + val(l), 0);
-  const spentCash = ls.filter((l) => l.kind === "cash" && l.flow === "out").reduce((s, l) => s + val(l), 0);
-  const spentCard = cards.reduce((s, c) => s + c.due, 0);
+  const spentCash = ls.filter((l) => l.kind === "cash" && isSpend(l)).reduce((s, l) => s + val(l), 0);
+  const spentCard = cards.reduce((s, c) => s + c.charged, 0);
   const planned = ls.filter(isSpend).reduce((s, l) => s + N(l.plan), 0);
 
   return {

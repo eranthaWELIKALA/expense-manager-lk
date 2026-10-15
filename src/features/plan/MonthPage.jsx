@@ -8,8 +8,10 @@ import { useViewMonth } from "../../hooks/useViewMonth";
 import {
   computeMonth, fmt, fmtK, mLabel, mShort, nextM, monthRail,
   N, isDateISO, isPayable, monthOfDate, setOverride, markPaid, recordPayment, removePayment, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, monthsToOpen, dayMonthLabel,
+  addTransfer, payCard, makeReal, withoutMaybes, viaLabel,
 } from "../../domain";
 import { NewExpenseModal, RecordPaymentModal } from "../editors/ExpenseModal";
+import { TransferModal } from "../editors/TransferModal";
 import { MonthNav } from "./MonthNav";
 import { AccountList } from "./AccountList";
 import { AccountDetail } from "./AccountDetail";
@@ -30,7 +32,8 @@ export default function MonthPage() {
   const { data: plan, update, canEdit } = useProfile();
   const [mk, setMonth] = useViewMonth();
   const [rolling, setRolling] = useState(false);
-  const [adding, setAdding] = useState(null); // "record" | "new"
+  const [adding, setAdding] = useState(null); // "record" | "new" | "maybe" | "transfer"
+  const [hideMaybes, setHideMaybes] = useState(false); // compare balances without the what-ifs
   const [paying, setPaying] = useState(null); // line key
   const [modal, setModal] = useState(null); // Actions menu: "income" | "edit:<coll>"
   const [selected, setSelected] = useState(null); // account key ("bank:<id>" …) or "open"; null = first account
@@ -43,12 +46,13 @@ export default function MonthPage() {
     if (a === "undo") undo(0);
     else if (a === "history") navigate("../history");
     else if (a === "move") setRolling(true);
+    else if (a === "maybe") setAdding("maybe");
     else setModal(a);
   };
   const toast = useToast();
   const confirm = useConfirm();
 
-  const month = useMemo(() => computeMonth(plan, mk), [plan, mk]);
+  const month = useMemo(() => computeMonth(hideMaybes ? withoutMaybes(plan) : plan, mk), [plan, mk, hideMaybes]);
   const pills = useMemo(() => monthRail(plan, mk), [plan, mk]);
 
   const opened = !!plan.months[mk];
@@ -80,8 +84,29 @@ export default function MonthPage() {
       update((d) => setOverride(d, mk, key, field, value), { label: `${name} — ${what} in ${mShort(mk)}`, group: `set:${mk}:${key}:${field}` });
     },
     pay: (key) => setPaying(key),
+    keep: (key) => {
+      const line = month.ls.find((l) => l.key === key);
+      update((d) => makeReal(d, mk, key), { label: `Kept what-if “${line ? line.label : "payment"}” in ${mShort(mk)}` });
+      toast.success(`“${line ? line.label : "Payment"}” is now a planned payment in ${mLabel(mk)}.`);
+    },
     remove: async (key) => {
       const line = month.ls.find((l) => l.key === key);
+      if (line && line.maybe) { // a what-if: nothing real is lost
+        update((d) => removeLine(d, mk, key), { label: `Dropped what-if “${line.label}” from ${mShort(mk)}` });
+        toast.info(`What-if “${line.label}” dropped.`);
+        return;
+      }
+      if (key.startsWith("tx:") || key.startsWith("ti:")) {
+        const ok = await confirm({
+          danger: true, title: `Delete this transfer of ${line ? fmt(line.plan) : "money"}?`,
+          message: "It's removed from both accounts, and balances for this month and later months are recalculated.",
+          confirmLabel: "Delete transfer",
+        });
+        if (!ok) return;
+        update((d) => removeLine(d, mk, key), { label: `Deleted transfer “${line ? line.label : ""}” in ${mShort(mk)}` });
+        toast.info("Transfer deleted.");
+        return;
+      }
       const oneOff = key.startsWith("x:"), part = key.startsWith("p:");
       const ok = await confirm({
         danger: true,
@@ -99,6 +124,16 @@ export default function MonthPage() {
     },
   } : null;
   const saveExpense = async ({ type, item, monthKey, line, payment }) => {
+    if (type === "maybe") {
+      if (!(await confirmNewMonths(monthKey, `This is in ${mLabel(monthKey)}, which isn't started yet.`))) return;
+      update((d) => addOneOff(ensureMonthsThrough(d, monthKey), monthKey, { ...item, maybe: true }),
+        { label: `Tried what-if “${item.name}” (${fmt(item.amount)}) in ${mShort(monthKey)}` });
+      if (monthKey !== mk) setMonth(monthKey);
+      setHideMaybes(false);
+      toast.success(`What-if “${item.name}” added to ${mLabel(monthKey)}. Check the balances, then keep or drop it.`);
+      setAdding(null);
+      return;
+    }
     if ((type === "pay" || type === "once") && !(await confirmNewMonths(monthKey, `This payment is in ${mLabel(monthKey)}, which isn't started yet.`))) return; // keep the form open
     if (type === "pay" && line.budget) {
       const spent = (line.paid || 0) + payment.amount;
@@ -148,6 +183,36 @@ export default function MonthPage() {
 
   const accounts = useMemo(() => monthAccounts(plan, month), [plan, month]);
   const allAccounts = [...accounts.banks, ...accounts.wallets, ...accounts.cards];
+
+  /* Money moving between accounts (or in from outside), and card payments. */
+  const saveTransfer = async ({ kind, monthKey, from, to, amount, date, note }) => {
+    if (!(await confirmNewMonths(monthKey, `This is in ${mLabel(monthKey)}, which isn't started yet.`))) return;
+    const on = date ? " on " + dayMonthLabel(date) : "";
+    const name = (ref) => (ref ? viaLabel(plan, ref).replace(/^(Bank|Cash|Card) · /, "") : "outside");
+    if (kind === "card") {
+      let result;
+      update((d) => { result = payCard(ensureMonthsThrough(d, monthKey), monthKey, { cardId: to.id, bankId: from.id, amount, date }); return result.plan; },
+        { label: `Paid card “${name(to)}” ${fmt(amount)} from ${name(from)}${on}` });
+      const r = result || { toBill: 0, ahead: amount };
+      toast.success(r.toBill > 0.005 && r.ahead > 0.005 ? `${fmt(r.toBill, 0)} paid on the bill, ${fmt(r.ahead, 0)} paid ahead.`
+        : r.toBill > 0.005 ? `${fmt(r.toBill, 0)} paid on the “${name(to)}” bill.` : `${fmt(r.ahead, 0)} paid ahead on “${name(to)}” — next month's bill goes down.`);
+    } else {
+      const verb = { cash: "Withdrew cash", deposit: "Deposited", bank: "Transferred", cashin: "Cash received" }[kind] || "Transferred";
+      const route = from ? `${name(from)} → ${name(to)}` : `into ${name(to)}`;
+      update((d) => addTransfer(ensureMonthsThrough(d, monthKey), monthKey, { from, to, amount, date, note }),
+        { label: `${verb} ${fmt(amount)} — ${route}${note ? " (" + note + ")" : ""}${on}` });
+      toast.success(`${verb} ${fmt(amount, 0)}: ${route}` + (monthKey === mk ? "." : ` (in ${mLabel(monthKey)}).`));
+    }
+    setAdding(null);
+  };
+
+  /* What-ifs in this month, and what they do to the bank balances. */
+  const maybes = month.ls.filter((l) => l.maybe);
+  const allMaybes = hideMaybes ? computeMonth(plan, mk).ls.filter((l) => l.maybe) : maybes;
+  const withMaybes = hideMaybes ? computeMonth(plan, mk) : month;
+  const without = computeMonth(withoutMaybes(plan), mk);
+  const shortBecause = withMaybes.short.filter((b) => !without.short.some((x) => x.o.id === b.o.id));
+  const maybeTotal = allMaybes.reduce((s, l) => s + N(l.plan), 0);
   const openRows = allAccounts.flatMap((a) => a.rows.filter(isOpen).map((line) => ({ line, account: a })));
   const current = selected === "open" ? null : allAccounts.find((a) => a.key === selected) || allAccounts[0] || null;
   const salaries = month.ls.filter((l) => l.origin === "salary");
@@ -156,7 +221,8 @@ export default function MonthPage() {
 
   return (
     <>
-      <MonthNav value={mk} items={pills} openedMonths={plan.months} onSelect={setMonth} onRecord={() => setAdding("record")} onNewExpense={() => setAdding("new")} onAction={onAction} canEdit={canEdit} />
+      <MonthNav value={mk} items={pills} openedMonths={plan.months} onSelect={setMonth} onRecord={() => setAdding("record")} onNewExpense={() => setAdding("new")}
+        onTransfer={() => setAdding("transfer")} onAction={onAction} canEdit={canEdit} />
 
       {!opened && (
         <div style={{ marginBottom: 16 }}>
@@ -190,6 +256,35 @@ export default function MonthPage() {
         </div>
       )}
 
+      {allMaybes.length > 0 && (
+        <div className="whatif" role="status">
+          <div className="whatif-t">
+            <b>{allMaybes.length} what-if{allMaybes.length === 1 ? "" : "s"} in {mLabel(mk)} · {fmt(maybeTotal, 0)}</b>
+            <span>
+              {shortBecause.length
+                ? `With ${allMaybes.length === 1 ? "it" : "them"}, ${shortBecause.map((b) => b.o.name).join(", ")} would go below zero.`
+                : `${allMaybes.length === 1 ? "It fits" : "They fit"} — no bank goes below zero.`}
+              {" "}Left in the banks: {fmt(withMaybes.inBank, 0)} with, {fmt(without.inBank, 0)} without.
+            </span>
+          </div>
+          <div className="whatif-a">
+            <div className="mseg" role="group" aria-label="Balances">
+              <button type="button" aria-pressed={!hideMaybes} className={hideMaybes ? undefined : "on"} onClick={() => setHideMaybes(false)}>With</button>
+              <button type="button" aria-pressed={hideMaybes} className={hideMaybes ? "on" : undefined} onClick={() => setHideMaybes(true)}>Without</button>
+            </div>
+            {actions && !hideMaybes && <Button size="sm" onClick={() => {
+              update((d) => allMaybes.reduce((acc, l) => makeReal(acc, mk, l.key), d), { label: `Kept ${allMaybes.length} what-if${allMaybes.length === 1 ? "" : "s"} in ${mShort(mk)}` });
+              toast.success("Kept — they're planned payments now.");
+            }}>Keep all</Button>}
+            {actions && <Button size="sm" variant="ghost" onClick={() => {
+              update((d) => allMaybes.reduce((acc, l) => removeLine(acc, mk, l.key), d), { label: `Dropped ${allMaybes.length} what-if${allMaybes.length === 1 ? "" : "s"} in ${mShort(mk)}` });
+              setHideMaybes(false);
+              toast.info("What-ifs dropped.");
+            }}>Drop all</Button>}
+          </div>
+        </div>
+      )}
+
       <div className="mwork">
         <AccountList accounts={accounts} selected={current ? current.key : "open"} onSelect={setSelected} openCount={openRows.length} />
         <AccountDetail account={current} openRows={openRows} actions={actions} openOnly={openOnly} onOpenOnly={setOpenOnly}
@@ -220,7 +315,8 @@ export default function MonthPage() {
       )}
 
       {adding === "record" && <RecordPaymentModal plan={plan} monthKey={mk} onSave={saveExpense} onRemovePart={removePart} onClose={() => setAdding(null)} />}
-      {adding === "new" && <NewExpenseModal plan={plan} monthKey={mk} onSave={saveExpense} onClose={() => setAdding(null)} />}
+      {(adding === "new" || adding === "maybe") && <NewExpenseModal plan={plan} monthKey={mk} initialType={adding === "maybe" ? "maybe" : "monthly"} onSave={saveExpense} onClose={() => setAdding(null)} />}
+      {adding === "transfer" && <TransferModal plan={plan} monthKey={mk} onSave={saveTransfer} onClose={() => setAdding(null)} />}
       {modal === "income" && <IncomeReceivedModal plan={plan} monthKey={mk} onSave={saveIncome} onClose={() => setModal(null)} />}
       {editColl && (
         <PickItemModal {...PICK[editColl]} items={plan[editColl]} onClose={() => setModal(null)}

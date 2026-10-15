@@ -4,9 +4,9 @@ import { mLabel, mShort, nextM, prevM } from "../../domain";
 
 /**
  * Month rail: prev/next, a pill per opened month, record payment, new expense and the "more" menu.
- * onAction(name): "income" | "edit:templates" | "edit:incomes" | "edit:installments" | "undo" | "history" | "move"
+ * onAction(name): "income" | "maybe" | "edit:templates" | "edit:incomes" | "edit:installments" | "undo" | "history" | "move"
  */
-export function MonthNav({ value, items, openedMonths, onSelect, onRecord, onNewExpense, onAction, canEdit }) {
+export function MonthNav({ value, items, openedMonths, onSelect, onRecord, onNewExpense, onTransfer, onAction, canEdit }) {
   const pillsRef = useRef(null);
   useEffect(() => { // keep the chosen month in view
     const on = pillsRef.current?.querySelector(".mpill.on");
@@ -37,6 +37,7 @@ export function MonthNav({ value, items, openedMonths, onSelect, onRecord, onNew
       {canEdit && (
         <div className="mrail-act">
           <Button variant="primary" onClick={onRecord}><span className="ico" aria-hidden>+</span>Record payment</Button>
+          <Button onClick={onTransfer}><span aria-hidden>⇄</span>Move money</Button>
           <Button onClick={onNewExpense}>New expense</Button>
           <Menu trigger={({ toggle, props }) => (
             <Button className="ico-btn" onClick={toggle} aria-label="More actions" title="More actions" {...props}>
@@ -45,6 +46,7 @@ export function MonthNav({ value, items, openedMonths, onSelect, onRecord, onNew
           )}>
             <MenuLabel>Record</MenuLabel>
             <MenuItem onClick={() => onAction("income")}><span className="mi" aria-hidden>↓</span>Record income received…</MenuItem>
+            <MenuItem onClick={() => onAction("maybe")}><span className="mi" aria-hidden>?</span>What if… (check a payment fits)</MenuItem>
             <MenuDivider />
             <MenuLabel>Change</MenuLabel>
             <MenuItem onClick={() => onAction("edit:templates")}><span className="mi" aria-hidden>↻</span>Change a monthly item…</MenuItem>

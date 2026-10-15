@@ -9,6 +9,7 @@ const PENCIL = "M4 20h4L19 9l-4-4L4 16v4z";
 const UNDO = "M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3";
 const KINDS = [
   { id: "month", re: /^(Started|Moved into)\b/, icon: "M5 12h14M13 6l6 6-6 6" },
+  { id: "pay", tone: "move", re: /^(Withdrew cash|Deposited|Transferred|Deleted transfer)\b/, icon: "M7 7h11l-3-3M17 17H6l3 3" },
   { id: "setup", tone: "add", re: /^Added\b/, icon: "M12 5v14M5 12h14" },
   { id: "setup", tone: "edit", re: /^Edited\b/, icon: PENCIL },
   { id: "setup", tone: "del", re: /^Deleted\b/, icon: "M6 6l12 12M18 6L6 18" },

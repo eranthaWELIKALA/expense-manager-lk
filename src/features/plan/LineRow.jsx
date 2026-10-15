@@ -18,17 +18,21 @@ const Dot = ({ ratio, neg }) => (
 
 /**
  * One derived line (salary, bill, recurring item, installment, one-off).
- * `actions`: {set(key, field, value), remove(key), pay(key)}; omit for read-only.
+ * `actions`: {set(key, field, value), remove(key), pay(key), keep(key)}; omit for read-only. keep() makes a what-if real.
  * Ticking a payable line or a varying salary opens the pay dialog for the real amount.
  * `account` names the line's account (used where lines from several accounts are mixed).
  */
 export function LineRow({ line, balanceBase, showBalance = true, lockedHint, actions, account }) {
   const ro = !actions;
   return (
-    <div className={"row" + (line.done ? " done" : "")}>
+    <div className={"row" + (line.done ? " done" : "") + (line.maybe ? " maybe" : "")}>
       {showBalance ? <span className="rail-c"><Dot ratio={line.bal / balanceBase} neg={line.bal < 0} /></span> : <span />}
-      <Checkbox checked={line.done} disabled={ro || line.origin === "part"} label={line.done ? (line.flow === "in" ? "Received" : "Paid") + " — untick to undo" : isPayable(line) ? "Mark paid" : asksAmount(line) ? "Mark received" : "Settled"}
-        onChange={(v) => (v && actions.pay && asksAmount(line) ? actions.pay(line.key) : actions.set(line.key, "done", v))} />
+      {line.maybe
+        ? <button type="button" className="chk maybe" disabled={ro} aria-label={"Keep “" + line.label + "” — make it a real payment"} title="What-if — click to keep it as a real payment"
+          onClick={() => actions.keep(line.key)}>?</button>
+        : <Checkbox checked={line.done} disabled={ro || line.origin === "part" || line.origin === "transfer"}
+          label={line.origin === "transfer" ? "Recorded transfer" : line.done ? (line.flow === "in" ? "Received" : "Paid") + " — untick to undo" : isPayable(line) ? "Mark paid" : asksAmount(line) ? "Mark received" : "Settled"}
+          onChange={(v) => (v && actions.pay && asksAmount(line) ? actions.pay(line.key) : actions.set(line.key, "done", v))} />}
       <span className="lbl" title={line.label}>
         {line.flow === "in" && showBalance && <span className="in" aria-label="incoming">↑</span>}{line.label}
         {line.tag && <span className={"tag" + (line.over ? " over" : "")}>{line.tag}</span>}
@@ -38,7 +42,7 @@ export function LineRow({ line, balanceBase, showBalance = true, lockedHint, act
         <AmountInput className="plan" value={line.plan} readOnly={ro || line.locked}
           title={line.locked ? lockedHint : "Planned"} aria-label={line.label + " planned"}
           onChange={(v) => actions.set(line.key, "plan", v)} />
-        <AmountInput className="act" value={line.actual} readOnly={ro || line.origin === "part" || !!line.portions}
+        <AmountInput className="act" value={line.actual} readOnly={ro || line.origin === "part" || line.origin === "transfer" || !!line.portions}
           title={line.portions ? "Paid in parts — tick it or use Record payment to add more" : undefined} aria-label={line.label + " actual"}
           onChange={(v) => actions.set(line.key, "actual", v)} />
         {showBalance && <span className={"bal " + (line.bal < 0 ? "neg" : "")}>{fmt(line.bal)}</span>}
