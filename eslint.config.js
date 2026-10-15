@@ -24,4 +24,5 @@ export default [
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", destructuredArrayIgnorePattern: "^_" }],
     },
   },
+  { files: ["src/pwa/sw.js"], languageOptions: { sourceType: "script", globals: { ...globals.serviceworker } } },
 ];

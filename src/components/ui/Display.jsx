@@ -7,22 +7,14 @@ export function Badge({ tone = "grey", children, title }) {
   return <span className={"chipx " + t} title={title}>{children}</span>;
 }
 
-/** Money-map chip. tone: in | cash | card | dir | mute */
-export function Chip({ tone, label, value }) {
-  return (
-    <span className={cx("chip", tone === "mute" ? "mut" : tone)}>
-      {label}{value !== undefined && <b>{value}</b>}
-    </span>
-  );
-}
-
-/** tone: jade | flag | violet | brass | acc — a coloured edge. */
-export function StatCard({ label, value, sub, highlight = false, subTone, tone }) {
+/** tone: jade | flag | violet | brass | acc — a coloured edge. `children` render under the figure. */
+export function StatCard({ label, value, sub, highlight = false, subTone, tone, children }) {
   return (
     <div className={cx("stat", highlight && "hi", tone && "t-" + tone)}>
       <label>{label}</label>
       <div className="v">{value}</div>
       {sub && <div className={cx("sub", subTone)}>{sub}</div>}
+      {children}
     </div>
   );
 }
@@ -54,20 +46,6 @@ export function Panel({ title, badges, total, totalTone, note, warn = false, chi
       {note ? <div className="pnote">{note}</div> : null}
       {children !== undefined && <div className={bodyClass}>{children}</div>}
     </div>
-  );
-}
-
-/** Settings-style section: title, action button, description, rows. */
-export function ConfigCard({ title, description, action, children }) {
-  return (
-    <section className="cfg">
-      <div className="h">
-        <h3>{title}</h3>
-        {action}
-        {description && <p>{description}</p>}
-      </div>
-      {children}
-    </section>
   );
 }
 

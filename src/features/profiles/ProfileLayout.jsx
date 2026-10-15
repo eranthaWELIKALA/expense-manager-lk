@@ -43,7 +43,6 @@ function ProfileFrame() {
           <span className="mut phdr-cur">{meta.currency}</span>
           {meta.role !== "owner" && <Badge tone="acc">{roleLabel(meta.role)}</Badge>}
           <SaveIndicator />
-          <Link className="btn phdr-share" to={`/settings/profiles/${profileId}`}>{isOwner ? "Share" : "Details"}</Link>
         </div>
         <div className="phdr-nav">
           <NavTabs keepSearch items={[
@@ -52,6 +51,7 @@ function ProfileFrame() {
             { to: base + "/setup", label: "Setup" },
             { to: base + "/history", label: "History" },
           ]} />
+          <Link className="btn phdr-share" to={`/settings/profiles/${profileId}`}>{isOwner ? "Share" : "Details"}</Link>
         </div>
       </div>
       {!canEdit && <Banner tone="info">You have view-only access to this profile.</Banner>}

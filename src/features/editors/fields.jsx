@@ -1,6 +1,7 @@
 import React from "react";
 import { Field, Select, TextInput } from "../../components/ui";
 import { fmt, mLabel, monthOfDate, numOr, todayISO } from "../../domain";
+import { BANKS, NETWORKS, NO_LOGO, bankInfo, guessBank, guessNetwork, networkInfo } from "../../lib/banks";
 
 /* Form fields shared by every add/edit modal. Values are strings while editing. */
 
@@ -53,6 +54,25 @@ export function BankField({ plan, form, name, label, allowNone = false, noneLabe
   );
 }
 
+/**
+ * Which bank (or card network) an account's logo shows. "" matches it from the
+ * account name; "none" shows initials. Choices come from lib/banks.
+ */
+export function LogoField({ form, name, label, networks = false }) {
+  const list = networks ? NETWORKS : BANKS;
+  const guessed = networks ? guessNetwork(form.values.name) : guessBank(form.values.name);
+  const auto = guessed ? "Match name (" + (networks ? networkInfo(guessed) : bankInfo(guessed)).name + ")" : "Match name";
+  return (
+    <Field label={label} error={form.errors[name]}>
+      <Select value={form.values[name] || ""} onChange={form.set(name)}>
+        <option value="">{auto}</option>
+        {list.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        <option value={NO_LOGO}>{networks ? "None" : "Other (no logo)"}</option>
+      </Select>
+    </Field>
+  );
+}
+
 /** Payment method: straight from a bank, from a cash pot, or on a card. Value is "kind|id". */
 export function PaymentMethodField({ plan, form, name = "via", label = "Pay with" }) {
   const empty = plan.banks.length + plan.wallets.length + plan.cards.length === 0;
@@ -78,6 +98,21 @@ export const defaultVia = (plan) => {
   if (plan.wallets[0]) return "cash|" + plan.wallets[0].id;
   return "";
 };
+
+/** One payment (a bill) or several (a budget like groceries or sport, total varies). Value "one" | "budget". */
+export function PaidHowField({ form, name = "budget" }) {
+  const budget = form.values[name] === "budget";
+  return (
+    <Field label="How it's paid" hint={budget
+      ? "The amount is a budget. Record each payment as it happens — the month's total can be under or over."
+      : "One payment a month (it can still be paid in parts)."}>
+      <Select value={form.values[name] || "one"} onChange={form.set(name)}>
+        <option value="one">One payment (a bill)</option>
+        <option value="budget">Several payments (a budget)</option>
+      </Select>
+    </Field>
+  );
+}
 
 /** Installment terms: fixed number of months, or a monthly amount until the total is paid. */
 export function InstallmentFields({ form, minDate }) {

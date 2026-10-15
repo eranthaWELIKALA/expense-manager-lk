@@ -20,7 +20,7 @@ export const COLLECTIONS = {
 
 /* Ledger line keys each collection produces (see domain/ledger.js). */
 const LINE_PREFIX = { incomes: "s:", wallets: "w:", cards: "b:", templates: "t:", installments: "i:" };
-const COSMETIC = new Set(["name", "note"]);
+const COSMETIC = new Set(["name", "note", "logo", "issuer", "network"]);
 /* Payment method / auto-debit changes leave history alone (see pinPaidHistory). */
 const PINNED = new Set(["via", "auto"]);
 /* Edits to these ask which months they apply to (see applyItemChange). */

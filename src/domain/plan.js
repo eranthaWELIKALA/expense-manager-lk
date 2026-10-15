@@ -6,7 +6,7 @@
               (variable: the amount differs each month — `splits` is the estimate; past: see versions.js)
    @typedef {{id:string, name:string, from:string, amount:number}} Wallet
    @typedef {{id:string, name:string, bank:string, note?:string}} Card
-   @typedef {{id:string, name:string, amount:number, via:Via, flow:"out"|"in"|"move", to?:string, active?:boolean,
+   @typedef {{id:string, name:string, amount:number, via:Via, flow:"out"|"in"|"move", to?:string, active?:boolean, budget?:boolean,
               startMonth?:string, day?:number, past?:object[]}} Template
    @typedef {{id:string, name:string, mode:"term"|"open", total:number, months?:number, monthly?:number,
               prepaid?:number, startMonth:string, via:Via, auto?:boolean}} Installment
@@ -146,6 +146,46 @@ export function markPaid(d, mk, lineKey, { actual, via, date }) {
 }
 
 /**
+ * Record a payment towards a line in one month — the whole amount, or one part of it.
+ * A single payment that covers it (or `settle`s it) is stored as a plain paid line;
+ * otherwise it's added to the line's parts, and the line counts as paid once the parts reach
+ * the planned amount (or a part `settle`s it, e.g. the bill came in lower).
+ * payment: {amount, via, date, settle?}
+ */
+export function recordPayment(d, mk, lineKey, { amount, via, date, settle = false }) {
+  const line = lines(d, mk).find((l) => l.key === lineKey);
+  if (!line) throw new Error("That payment isn't in this month.");
+  const M = monthOf(d, mk);
+  const prev = M.ov[lineKey] || {};
+  const parts = Array.isArray(prev.payments) ? [...prev.payments] : [];
+  const due = line.actual != null ? Number(line.actual) : Number(line.plan) || 0; // an entered actual is the expected cost
+  if (!line.budget && !parts.length && !(prev.done && prev.actual != null) && (settle || amount >= due - 0.005)) {
+    return markPaid(d, mk, lineKey, { actual: amount, via, date }); // paid at once
+  }
+  if (!parts.length && prev.done && prev.actual != null) { // an earlier one-off payment becomes the first part
+    parts.push({ id: uid("p"), amount: Number(prev.actual), via: { kind: line.kind, id: line.id }, ...(isDateISO(prev.paidOn) ? { date: prev.paidOn } : {}) });
+  }
+  const part = { id: uid("p"), amount };
+  if (via && via.kind && via.id) part.via = { kind: via.kind, id: via.id };
+  if (isDateISO(date)) part.date = date;
+  const { actual: _a, paidOn: _p, done: _d, ...rest } = prev;
+  const next = { ...rest, payments: [...parts, part] };
+  if (settle) next.done = true; // otherwise "paid" follows the total
+  return withMonth(d, mk, { ...M, ov: { ...M.ov, [lineKey]: next } });
+}
+
+/** Remove one recorded part of a payment. */
+export function removePayment(d, mk, lineKey, paymentId) {
+  const M = monthOf(d, mk);
+  const prev = M.ov[lineKey];
+  if (!prev || !Array.isArray(prev.payments)) return d;
+  const payments = prev.payments.filter((p) => p.id !== paymentId);
+  const { payments: _p, done: _d, ...rest } = prev;
+  const next = payments.length ? { ...rest, payments } : rest;
+  return withMonth(d, mk, { ...M, ov: { ...M.ov, [lineKey]: next } });
+}
+
+/**
  * Before an item's payment method or auto-debit setting changes, pin the old
  * values onto past months and months already marked paid, so history keeps
  * showing how those payments were really made. Unpaid months follow the edit.
@@ -201,6 +241,10 @@ export function applyItemChange(d, coll, before, after, scope, mk) {
 /** Remove a line from one month. One-offs are deleted; derived lines are hidden. */
 export function removeLine(d, mk, lineKey) {
   const M = monthOf(d, mk);
+  if (lineKey.startsWith("p:")) { // a part paid another way: "p:<line key>:<payment id>"
+    const cut = lineKey.lastIndexOf(":");
+    return removePayment(d, mk, lineKey.slice(2, cut), lineKey.slice(cut + 1));
+  }
   if (lineKey.startsWith("x:")) {
     const id = lineKey.slice(2);
     return withMonth(d, mk, { ...M, extra: (M.extra || []).filter((e) => e.id !== id) });

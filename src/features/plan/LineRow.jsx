@@ -20,23 +20,26 @@ const Dot = ({ ratio, neg }) => (
  * One derived line (salary, bill, recurring item, installment, one-off).
  * `actions`: {set(key, field, value), remove(key), pay(key)}; omit for read-only.
  * Ticking a payable line or a varying salary opens the pay dialog for the real amount.
+ * `account` names the line's account (used where lines from several accounts are mixed).
  */
-export function LineRow({ line, balanceBase, showBalance = true, lockedHint, actions }) {
+export function LineRow({ line, balanceBase, showBalance = true, lockedHint, actions, account }) {
   const ro = !actions;
   return (
     <div className={"row" + (line.done ? " done" : "")}>
       {showBalance ? <span className="rail-c"><Dot ratio={line.bal / balanceBase} neg={line.bal < 0} /></span> : <span />}
-      <Checkbox checked={line.done} disabled={ro} label={line.done ? (line.flow === "in" ? "Received" : "Paid") + " — untick to undo" : isPayable(line) ? "Mark paid" : asksAmount(line) ? "Mark received" : "Settled"}
+      <Checkbox checked={line.done} disabled={ro || line.origin === "part"} label={line.done ? (line.flow === "in" ? "Received" : "Paid") + " — untick to undo" : isPayable(line) ? "Mark paid" : asksAmount(line) ? "Mark received" : "Settled"}
         onChange={(v) => (v && actions.pay && asksAmount(line) ? actions.pay(line.key) : actions.set(line.key, "done", v))} />
       <span className="lbl" title={line.label}>
         {line.flow === "in" && showBalance && <span className="in" aria-label="incoming">↑</span>}{line.label}
-        {line.tag && <span className="tag">{line.tag}</span>}
+        {line.tag && <span className={"tag" + (line.over ? " over" : "")}>{line.tag}</span>}
+        {account && <span className="tag where">{account}</span>}
       </span>
       <span className="nums">
         <AmountInput className="plan" value={line.plan} readOnly={ro || line.locked}
           title={line.locked ? lockedHint : "Planned"} aria-label={line.label + " planned"}
           onChange={(v) => actions.set(line.key, "plan", v)} />
-        <AmountInput className="act" value={line.actual} readOnly={ro} aria-label={line.label + " actual"}
+        <AmountInput className="act" value={line.actual} readOnly={ro || line.origin === "part" || !!line.portions}
+          title={line.portions ? "Paid in parts — tick it or use Record payment to add more" : undefined} aria-label={line.label + " actual"}
           onChange={(v) => actions.set(line.key, "actual", v)} />
         {showBalance && <span className={"bal " + (line.bal < 0 ? "neg" : "")}>{fmt(line.bal)}</span>}
       </span>

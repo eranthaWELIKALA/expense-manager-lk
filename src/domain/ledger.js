@@ -11,8 +11,8 @@
    object, so results are memoised per data object via WeakMap.
    ============================================================ */
 
-import { prevM, mShort, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, dateInMonth, todayISO } from "./months";
-import { N } from "./format";
+import { prevM, mShort, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, dateInMonth, todayISO, currentMonthKey } from "./months";
+import { N, fmt } from "./format";
 import { instFor } from "./installments";
 import { versionAt } from "./versions";
 
@@ -25,7 +25,10 @@ export const isPayable = (line) => line.flow === "out" && ["recurring", "install
 export const asksAmount = (line) => isPayable(line) || (line.origin === "salary" && line.variable);
 
 /** Effective amount of a line: actual when entered, otherwise plan. */
-export const val = (l) => (l.actual !== null && l.actual !== undefined ? N(l.actual) : N(l.plan));
+export const val = (l) => (l.eff !== undefined ? l.eff : l.actual !== null && l.actual !== undefined ? N(l.actual) : N(l.plan));
+
+const sum = (ps) => ps.reduce((s, p) => s + N(p.amount), 0);
+const joinTags = (...t) => t.filter(Boolean).join(" · ") || null;
 
 const LC = new WeakMap();
 export function lines(d, key) {
@@ -44,12 +47,37 @@ function computeLines(d, key) {
     const o2 = M.ov[o.key] || {};
     if (o2.removed) return;
     const via = o2.via && o2.via.kind && o2.via.id ? { kind: o2.via.kind, id: o2.via.id } : null; // paid another way this month
+    const base = { ...o, ...via, plan: o2.plan !== undefined ? o2.plan : o.plan };
+    const pays = Array.isArray(o2.payments) ? o2.payments.filter((p) => p && N(p.amount) > 0) : [];
+    if (pays.length) return pushParts(base, o2, pays);
     const done = o2.done !== undefined ? !!o2.done : !!o.autoPaid;
     const paidOn = done && isDateISO(o2.paidOn) && o2.paidOn !== o.date ? (o.flow === "in" ? "received " : "paid ") + dayMonthLabel(o2.paidOn) : null;
+    const line = { ...base, actual: o2.actual !== undefined ? o2.actual : null, done, tag: joinTags(o.tag, paidOn) };
+    out.push({ ...line, paid: done ? val(line) : 0, remaining: done ? 0 : val(line) }); // an entered actual is the expected cost
+  };
+
+  /* Paid in parts (ov.payments): progress on the line itself; parts paid another way
+     come out of that bank / cash pot / card as their own locked lines. */
+  const pushParts = (base, o2, pays) => {
+    const here = (p) => !p.via || (p.via.kind === base.kind && p.via.id === base.id);
+    const plan = N(base.plan);
+    const paid = sum(pays), paidHere = sum(pays.filter(here));
+    // a budget stays open while its month runs (spend can go over); a bill is paid once the parts reach it
+    const done = o2.done !== undefined ? !!o2.done : base.budget ? key < currentMonthKey() : paid >= plan - 0.005;
+    const over = base.budget && paid > plan + 0.005;
+    const progress = base.budget
+      ? (over ? `${fmt(paid - plan, 0)} over budget` : `${fmt(paid, 0)} of ${fmt(plan, 0)} spent`)
+      : done ? (pays.length > 1 ? `paid in ${pays.length} parts` : null) : `${fmt(paid, 0)} of ${fmt(plan, 0)} paid`;
     out.push({
-      ...o, ...via, plan: o2.plan !== undefined ? o2.plan : o.plan, actual: o2.actual !== undefined ? o2.actual : null,
-      done, tag: [o.tag, paidOn].filter(Boolean).join(" · ") || null,
+      ...base, actual: paidHere, done, paid, over, remaining: done ? 0 : Math.max(0, plan - paid), payments: pays, portions: true,
+      eff: done ? paidHere : Math.max(plan - (paid - paidHere), paidHere), // still expected to leave here: the unpaid rest
+      tag: joinTags(base.tag, progress),
     });
+    pays.filter((p) => !here(p)).forEach((p) => out.push({
+      key: "p:" + base.key + ":" + p.id, label: base.label + " (part)", kind: p.via.kind, id: p.via.id, flow: base.flow,
+      plan: null, actual: N(p.amount), done: true, origin: "part", locked: true, day: base.day || null,
+      tag: isDateISO(p.date) ? "paid " + dayMonthLabel(p.date) : null,
+    }));
   };
   const planOf = (k, fallback) => { const o = M.ov[k]; return o && o.plan !== undefined ? o.plan : fallback; };
 
@@ -87,12 +115,14 @@ function computeLines(d, key) {
     if (t.startMonth && mDiff(t.startMonth, key) < 0) return;
     const amt = planOf("t:" + t.id, N(t.amount));
     const day = t.day || null;
-    const due = day ? "due " + ordinal(day) : null;
+    const budget = !!t.budget && t.flow !== "move" && t.flow !== "in"; // spent in several payments, total varies
+    const due = day && !budget ? "due " + ordinal(day) : null;
     if (t.flow === "move") {
       push({ key: "t:" + t.id, label: t.name, kind: t.via.kind, id: t.via.id, flow: "out", plan: N(t.amount), origin: "move", tag: "transfer", day });
       push({ key: "tm:" + t.id, label: t.name, kind: "bank", id: t.to, flow: "in", plan: amt, origin: "move", tag: "transfer", locked: true, day });
     } else {
-      push({ key: "t:" + t.id, label: t.name, kind: t.via.kind, id: t.via.id, flow: t.flow === "in" ? "in" : "out", plan: N(t.amount), origin: "recurring", tag: due, day });
+      push({ key: "t:" + t.id, label: t.name, kind: t.via.kind, id: t.via.id, flow: t.flow === "in" ? "in" : "out", plan: N(t.amount), origin: "recurring",
+        tag: joinTags(budget ? "budget" : null, due), day, ...(budget ? { budget } : {}) });
     }
   });
 
@@ -147,7 +177,7 @@ function openingFor(d, key, kind, id, depth) {
   return adj;
 }
 
-const ORIGIN_ORDER = { salary: 0, move: 1, bill: 2, recurring: 3, installment: 3, oneoff: 4, withdrawal: 5 };
+const ORIGIN_ORDER = { salary: 0, move: 1, bill: 2, recurring: 3, installment: 3, part: 3, oneoff: 4, withdrawal: 5 };
 const isSpend = (l) => l.flow === "out" && l.origin !== "bill" && l.origin !== "withdrawal" && l.origin !== "move";
 
 function doMonth(d, key, depth) {

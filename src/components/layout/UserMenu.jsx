@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useSyncExternalStore } from "react";
 import { useNavigate } from "react-router-dom";
+import { installState, promptInstall, subscribeInstall } from "../../pwa/register";
 import { Avatar, Menu, MenuDivider, MenuItem, MenuLabel } from "../ui";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -13,6 +14,12 @@ export function UserMenu() {
   const navigate = useNavigate();
   const toast = useToast();
   const [theme, setTheme] = useTheme();
+  const install = useSyncExternalStore(subscribeInstall, installState);
+
+  const doInstall = async () => {
+    if (install === "ios") toast.info("To install: tap the Share button, then “Add to Home Screen”.");
+    else if (await promptInstall()) toast.success("Installed. Open Money Plan from your home screen or apps.");
+  };
 
   const doSignOut = async () => {
     try { await signOut(); navigate("/sign-in", { replace: true }); } catch (e) { toast.error(errorMessage(e)); }
@@ -46,6 +53,9 @@ export function UserMenu() {
         </MenuItem>
       ))}
       <MenuDivider />
+      {(install === "prompt" || install === "ios") && (
+        <MenuItem onClick={doInstall}><span className="mi" aria-hidden>⤓</span><span className="menu-grow">Install app</span></MenuItem>
+      )}
       <MenuItem onClick={doSignOut}>Sign out</MenuItem>
     </Menu>
   );

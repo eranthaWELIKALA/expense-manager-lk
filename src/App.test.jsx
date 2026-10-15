@@ -42,8 +42,8 @@ describe("App", () => {
     await user.click(screen.getByLabelText(/example household/i));
     await user.click(screen.getByRole("button", { name: /create and open/i }));
 
-    // month view renders the plan
-    expect(await screen.findByText("Where the money goes")).toBeTruthy();
+    // month view renders the plan: the account list, with the first bank open
+    expect(await screen.findByRole("button", { name: /^Needs a tick/ })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1, name: "Household" })).toBeTruthy();
     expect(screen.getAllByText("Main current").length).toBeGreaterThan(0);
 
@@ -61,7 +61,7 @@ describe("App", () => {
     await user.click(within(dlg).getByRole("option", { name: /^Rent/ }));
     expect(within(dlg).getByLabelText("Amount paid").value).toBe("85000");
     await user.click(within(dlg).getByRole("button", { name: "Mark paid" }));
-    expect(await screen.findByText(/“Rent” marked paid/)).toBeTruthy();
+    expect(await screen.findByText(/“Rent” paid\./)).toBeTruthy();
 
     // record payment: validation, then something new becomes a paid one-time cash spend
     await user.click(screen.getByRole("button", { name: "Record payment" }));
@@ -74,6 +74,8 @@ describe("App", () => {
     await user.type(within(dlg).getByLabelText("Amount"), "3500");
     await user.click(within(dlg).getByRole("button", { name: "Record payment" }));
     expect(await screen.findByText(/“Doctor” paid on/)).toBeTruthy();
+    expect(screen.queryByLabelText("Doctor planned")).toBeNull(); // it's in the cash pot, not the open bank
+    await user.click(screen.getByRole("button", { name: /^Daily cash/ }));
     expect(screen.getByLabelText("Doctor planned").value).toBe("3,500");
 
     // removing a row asks first; cancel keeps it, confirm deletes it
@@ -108,6 +110,7 @@ describe("App", () => {
     expect(await screen.findByText(/“Dentist” scheduled on 15 .* it's in/)).toBeTruthy();
     expect(screen.queryByLabelText("Dentist planned")).toBeNull(); // not in this month
     await user.click(screen.getByRole("button", { name: "Next month" }));
+    await user.click(screen.getByRole("button", { name: /^Needs a tick/ })); // every open line, whichever account
     expect(await screen.findByLabelText("Dentist planned")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Previous month" }));
 
@@ -143,7 +146,8 @@ describe("App", () => {
     await user.type(within(dlg).getByLabelText("Name"), "Test Bank");
     await user.click(within(dlg).getByRole("button", { name: "Add bank" }));
     expect(await screen.findByText(/Bank account “Test Bank” added/)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Delete Test Bank" }));
+    await user.click(screen.getByRole("button", { name: "Edit Test Bank" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Edit bank account" })).getByRole("button", { name: "Delete" }));
     await user.click(within(await screen.findByRole("dialog", { name: /Delete “Test Bank”/ })).getByRole("button", { name: "Delete bank account" }));
     expect(await screen.findByText(/“Test Bank” deleted/)).toBeTruthy();
     expect(screen.queryByText("Test Bank")).toBeNull();

@@ -319,3 +319,104 @@ describe("addOneOff paid", () => {
     expect(l).toMatchObject({ done: true, tag: "5 Aug" });
   });
 });
+
+import { recordPayment, removePayment } from "./plan";
+
+describe("paying in parts", () => {
+  const base = () => { const d = plan(); d.months["2026-09"] = blankMonth(); return d; };
+  const rentOf = (d) => computeMonth(d, "2026-08").ls.find((l) => l.key === "t:t1");
+  const bank = (d) => computeMonth(d, "2026-08").banks[0];
+
+  it("a full single payment works as before", () => {
+    const d = recordPayment(base(), "2026-08", "t:t1", { amount: 2000, via: { kind: "bank", id: "b1" }, date: "2026-08-03" });
+    expect(rentOf(d)).toMatchObject({ done: true, actual: 2000, paid: 2000, remaining: 0 });
+    expect(rentOf(d).portions).toBeUndefined();
+  });
+
+  it("parts on the same method: progress shown, the rest still expected, paid when the total is reached", () => {
+    const before = bank(base()).closing;
+    let d = recordPayment(base(), "2026-08", "t:t1", { amount: 500, via: { kind: "bank", id: "b1" }, date: "2026-08-03" });
+    expect(rentOf(d)).toMatchObject({ done: false, paid: 500, remaining: 1500, actual: 500, tag: "500 of 2,000 paid" });
+    expect(bank(d).closing).toBe(before); // still 2,000 expected out of the bank
+    d = recordPayment(d, "2026-08", "t:t1", { amount: 1500, via: { kind: "bank", id: "b1" }, date: "2026-08-20" });
+    expect(rentOf(d)).toMatchObject({ done: true, paid: 2000, remaining: 0, tag: "paid in 2 parts" });
+    expect(bank(d).closing).toBe(before);
+  });
+
+  it("a part paid another way comes out of that method instead", () => {
+    const b0 = base();
+    const before = bank(b0).closing, cardBefore = computeMonth(b0, "2026-08").cards[0].due;
+    let d = recordPayment(b0, "2026-08", "t:t1", { amount: 500, via: { kind: "card", id: "c1" }, date: "2026-08-03" });
+    const m = computeMonth(d, "2026-08");
+    expect(m.cards[0].rows.find((r) => r.key.startsWith("p:t:t1:"))).toMatchObject({ actual: 500, done: true, label: "Rent (part)" });
+    expect(m.cards[0].due).toBe(cardBefore + 500);
+    expect(bank(d).closing).toBe(before + 500); // only the 1,500 left is still expected from the bank
+    expect(m.spent).toBe(computeMonth(b0, "2026-08").spent);
+    // removing the part (via the card line's key) puts it back
+    const key = m.cards[0].rows.find((r) => r.key.startsWith("p:")).key;
+    d = removeLine(d, "2026-08", key);
+    expect(rentOf(d)).toMatchObject({ done: false, paid: 0, remaining: 2000 });
+  });
+
+  it("settling for less closes the line at what was paid", () => {
+    let d = recordPayment(base(), "2026-08", "t:t1", { amount: 500, via: { kind: "bank", id: "b1" }, date: "2026-08-03" });
+    d = recordPayment(d, "2026-08", "t:t1", { amount: 1000, via: { kind: "bank", id: "b1" }, date: "2026-08-09", settle: true });
+    expect(rentOf(d)).toMatchObject({ done: true, paid: 1500, remaining: 0, actual: 1500 });
+    const parts = d.months["2026-08"].ov["t:t1"].payments;
+    d = removePayment(d, "2026-08", "t:t1", parts[1].id);
+    expect(rentOf(d)).toMatchObject({ done: false, paid: 500 });
+  });
+
+  it("adding to an already-paid bill keeps the first payment as a part", () => {
+    let d = markPaid(base(), "2026-08", "t:t1", { actual: 1200, via: { kind: "bank", id: "b1" }, date: "2026-08-02" });
+    d = recordPayment(d, "2026-08", "t:t1", { amount: 300, via: { kind: "bank", id: "b1" }, date: "2026-08-15" });
+    expect(rentOf(d)).toMatchObject({ paid: 1500, done: false, remaining: 500 });
+    expect(d.months["2026-08"].ov["t:t1"].payments.map((p) => p.amount)).toEqual([1200, 300]);
+  });
+});
+
+describe("budgets (spent in several payments)", () => {
+  const now = currentMonthKey();
+  const withBudget = (mk) => {
+    const d = plan();
+    d.templates = [...d.templates, { id: "t9", name: "Cricket", amount: 6000, via: { kind: "bank", id: "b1" }, flow: "out", budget: true }];
+    d.months = { [mk]: blankMonth() };
+    return d;
+  };
+  const line = (d, mk) => computeMonth(d, mk).ls.find((l) => l.key === "t:t9");
+  const pay = (d, mk, amount, extra = {}) => recordPayment(d, mk, "t:t9", { amount, via: { kind: "bank", id: "b1" }, date: mk + "-05", ...extra });
+
+  it("keeps the full budget set aside while the month runs, and never closes on its own", () => {
+    const empty = withBudget(now);
+    const full = computeMonth(empty, now).banks[0].closing;
+    let d = pay(empty, now, 6000); // a single payment equal to the budget doesn't close it
+    expect(line(d, now)).toMatchObject({ budget: true, done: false, paid: 6000, tag: "budget · 6,000 of 6,000 spent" });
+    d = pay(pay(withBudget(now), now, 2500), now, 1500);
+    expect(line(d, now)).toMatchObject({ done: false, paid: 4000, remaining: 2000 });
+    expect(computeMonth(d, now).banks[0].closing).toBe(full); // still 6,000 set aside
+  });
+
+  it("going over counts what was really spent", () => {
+    const empty = withBudget(now);
+    const full = computeMonth(empty, now).banks[0].closing;
+    const d = pay(pay(empty, now, 4000), now, 3000);
+    expect(line(d, now)).toMatchObject({ paid: 7000, over: true, tag: "budget · 1,000 over budget" });
+    expect(computeMonth(d, now).banks[0].closing).toBe(full - 1000);
+  });
+
+  it("closing it (or a past month) frees the unspent rest", () => {
+    const empty = withBudget(now);
+    const full = computeMonth(empty, now).banks[0].closing;
+    const closed = pay(pay(empty, now, 2000), now, 1000, { settle: true });
+    expect(line(closed, now)).toMatchObject({ done: true, paid: 3000 });
+    expect(computeMonth(closed, now).banks[0].closing).toBe(full + 3000);
+    const old = "2020-03";
+    const past = pay(withBudget(old), old, 2500);
+    expect(line(past, old)).toMatchObject({ done: true, paid: 2500, remaining: 0 });
+  });
+
+  it("bills keep the part-payment behaviour", () => {
+    const d = recordPayment(withBudget(now), now, "t:t1", { amount: 2000, via: { kind: "bank", id: "b1" }, date: now + "-05" });
+    expect(computeMonth(d, now).ls.find((l) => l.key === "t:t1")).toMatchObject({ done: true, actual: 2000 });
+  });
+});

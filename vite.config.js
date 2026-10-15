@@ -1,5 +1,26 @@
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+
+/**
+ * Emits sw.js (from src/pwa/sw.js) with this build's files listed for
+ * pre-caching, so the installed app opens offline. Build only.
+ */
+function serviceWorker() {
+  return {
+    name: 'service-worker',
+    apply: 'build',
+    generateBundle(_, bundle) {
+      const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && f !== 'index.html').sort();
+      const build = createHash('sha256').update(files.join('\n')).digest('hex').slice(0, 12);
+      const source = readFileSync(new URL('./src/pwa/sw.js', import.meta.url), 'utf8')
+        .replace('"__BUILD__"', JSON.stringify(build))
+        .replace('["__PRECACHE__"]', JSON.stringify([...files, 'manifest.webmanifest', 'icons/icon-192.png']));
+      this.emitFile({ type: 'asset', fileName: 'sw.js', source });
+    },
+  };
+}
 
 /**
  * Production-only Content-Security-Policy as a <meta> tag, for hosts that
@@ -17,6 +38,8 @@ function cspMeta(env) {
     'font-src https://fonts.gstatic.com',
     `connect-src ${connect}`,
     "img-src 'self' data:",
+    "manifest-src 'self'",
+    "worker-src 'self'",
     "base-uri 'self'",
     "form-action 'self'",
     "object-src 'none'",
@@ -33,7 +56,7 @@ export default defineConfig(({ mode }) => {
   return {
     // "/" locally; "/<repo>/" on GitHub Pages project sites (set by the deploy workflow).
     base: env.VITE_BASE_PATH || '/',
-    plugins: [react(), cspMeta(env)],
+    plugins: [react(), cspMeta(env), serviceWorker()],
     server: {
       host: '0.0.0.0',
       port: 3000,

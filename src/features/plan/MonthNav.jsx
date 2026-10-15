@@ -3,10 +3,10 @@ import { Button, Menu, MenuDivider, MenuItem, MenuLabel } from "../../components
 import { mLabel, mShort, nextM, prevM } from "../../domain";
 
 /**
- * Month rail: prev/next, a pill per opened month, record payment, new expense, the Actions menu and the roll-over action.
- * onAction(name): "income" | "edit:templates" | "edit:incomes" | "edit:installments" | "undo" | "history"
+ * Month rail: prev/next, a pill per opened month, record payment, new expense and the "more" menu.
+ * onAction(name): "income" | "edit:templates" | "edit:incomes" | "edit:installments" | "undo" | "history" | "move"
  */
-export function MonthNav({ value, items, openedMonths, onSelect, onMoveNext, onRecord, onNewExpense, onAction, canEdit }) {
+export function MonthNav({ value, items, openedMonths, onSelect, onRecord, onNewExpense, onAction, canEdit }) {
   const pillsRef = useRef(null);
   useEffect(() => { // keep the chosen month in view
     const on = pillsRef.current?.querySelector(".mpill.on");
@@ -38,7 +38,11 @@ export function MonthNav({ value, items, openedMonths, onSelect, onMoveNext, onR
         <div className="mrail-act">
           <Button variant="primary" onClick={onRecord}><span className="ico" aria-hidden>+</span>Record payment</Button>
           <Button onClick={onNewExpense}>New expense</Button>
-          <Menu trigger={({ toggle, props }) => <Button onClick={toggle} {...props}>Actions <span aria-hidden>▾</span></Button>}>
+          <Menu trigger={({ toggle, props }) => (
+            <Button className="ico-btn" onClick={toggle} aria-label="More actions" title="More actions" {...props}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
+            </Button>
+          )}>
             <MenuLabel>Record</MenuLabel>
             <MenuItem onClick={() => onAction("income")}><span className="mi" aria-hidden>↓</span>Record income received…</MenuItem>
             <MenuDivider />
@@ -47,10 +51,11 @@ export function MonthNav({ value, items, openedMonths, onSelect, onMoveNext, onR
             <MenuItem onClick={() => onAction("edit:incomes")}><span className="mi" aria-hidden>₨</span>Change a salary…</MenuItem>
             <MenuItem onClick={() => onAction("edit:installments")}><span className="mi" aria-hidden>▤</span>Change an installment…</MenuItem>
             <MenuDivider />
+            <MenuItem onClick={() => onAction("move")}><span className="mi" aria-hidden>→</span>Move into {mShort(nextM(value))}…</MenuItem>
+            <MenuDivider />
             <MenuItem onClick={() => onAction("undo")}><span className="mi" aria-hidden>↶</span>Undo last change</MenuItem>
             <MenuItem onClick={() => onAction("history")}><span className="mi" aria-hidden>☰</span>View history</MenuItem>
           </Menu>
-          <Button onClick={onMoveNext}>Move into {mShort(nextM(value))} <span aria-hidden>→</span></Button>
         </div>
       )}
     </div>

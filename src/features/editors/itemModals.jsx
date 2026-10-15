@@ -3,8 +3,9 @@ import { Button, Field, FormModal, RemoveButton, Select } from "../../components
 import { useForm } from "../../hooks/useForm";
 import { N, dateInMonth, dayOfDate, defaultDateIn, firstMonth, fmt, mShort, monthOfDate, numOr, ordinal, uid } from "../../domain";
 import { validateAmount, validateDate, validateName } from "../../lib/validation";
+import { bankInfo, cardLogoIds, networkInfo } from "../../lib/banks";
 import {
-  BankField, DateField, InstallmentFields, MoneyField, NameField, PaymentMethodField, TextField,
+  BankField, DateField, InstallmentFields, LogoField, MoneyField, NameField, PaidHowField, PaymentMethodField, TextField,
   decodeVia, defaultVia, encodeVia, maxDate, minDateFor,
 } from "./fields";
 
@@ -15,16 +16,20 @@ const str = (v) => (v === undefined || v === null ? "" : String(v));
 const titleFor = (item, noun) => (item ? "Edit " + noun : "Add " + noun);
 
 /* ---------------- bank ---------------- */
+/** Keep an explicit logo choice; "" (match the name) isn't stored. */
+const withChoice = (obj, key, value) => { const next = { ...obj }; if (value) next[key] = value; else delete next[key]; return next; };
+
 export function BankModal({ plan: _plan, item, onSave, onClose, onDelete }) {
   const form = useForm(
-    { name: str(item?.name), note: str(item?.note), opening: str(item?.opening ?? 0) },
+    { name: str(item?.name), note: str(item?.note), opening: str(item?.opening ?? 0), logo: str(item?.logo) },
     (v) => ({ name: validateName(v.name), opening: validateAmount(v.opening, { label: "Balance", required: false }) }),
   );
-  const save = form.guard((v) => onSave({ ...(item || { id: uid("bk") }), name: v.name.trim(), note: v.note.trim(), opening: numOr(v.opening) }));
+  const save = form.guard((v) => onSave(withChoice({ ...(item || { id: uid("bk") }), name: v.name.trim(), note: v.note.trim(), opening: numOr(v.opening) }, "logo", v.logo)));
   return (
     <FormModal title={titleFor(item, "bank account")} description="Every rupee lives in a bank or a cash pot." submitLabel={item ? "Save" : "Add bank"}
       onSubmit={save} onClose={onClose} onDelete={onDelete}>
       <NameField form={form} placeholder="e.g. Commercial Bank" />
+      <LogoField form={form} name="logo" label="Bank" />
       <TextField form={form} name="note" label="Note" placeholder="optional" />
       <MoneyField form={form} name="opening" label="Balance at start" hint="Only used for your very first month; later months carry over automatically." />
     </FormModal>
@@ -53,14 +58,19 @@ export function WalletModal({ plan, item, onSave, onClose, onDelete }) {
 /* ---------------- card ---------------- */
 export function CardModal({ plan, item, onSave, onClose, onDelete }) {
   const form = useForm(
-    { name: str(item?.name), bank: item ? item.bank || "" : plan.banks[0]?.id || "", note: str(item?.note) },
+    { name: str(item?.name), bank: item ? item.bank || "" : plan.banks[0]?.id || "", note: str(item?.note), issuer: str(item?.issuer), network: str(item?.network) },
     (v) => ({ name: validateName(v.name) }),
   );
-  const save = form.guard((v) => onSave({ ...(item || { id: uid("c") }), name: v.name.trim(), bank: v.bank, note: v.note.trim() }));
+  const save = form.guard((v) => onSave(withChoice(withChoice(
+    { ...(item || { id: uid("c") }), name: v.name.trim(), bank: v.bank, note: v.note.trim() }, "issuer", v.issuer), "network", v.network)));
   return (
     <FormModal title={titleFor(item, "card")} description="Charges build up all month; the total debits the bank you choose, next month."
       submitLabel={item ? "Save" : "Add card"} onSubmit={save} onClose={onClose} onDelete={onDelete}>
       <NameField form={form} placeholder="e.g. HNB Visa" />
+      <div className="form-grid">
+        <LogoField form={form} name="issuer" label="Issued by" />
+        <LogoField form={form} name="network" label="Network" networks />
+      </div>
       <BankField plan={plan} form={form} name="bank" label="Bill paid from" allowNone noneLabel="Not billed to a bank" />
       <TextField form={form} name="note" label="Note" placeholder="e.g. statement date 20th" />
     </FormModal>
@@ -125,7 +135,7 @@ export function IncomeModal({ plan, item, onSave, onClose, onDelete }) {
 export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDelete }) {
   const form = useForm(
     {
-      name: str(item?.name), amount: str(item?.amount ?? ""), flow: item?.flow || "out", via: item ? encodeVia(item.via) : defaultVia(plan), to: item?.to || "",
+      name: str(item?.name), amount: str(item?.amount ?? ""), flow: item?.flow || "out", budget: item?.budget ? "budget" : "one", via: item ? encodeVia(item.via) : defaultVia(plan), to: item?.to || "",
       date: item?.startMonth ? dateInMonth(item.startMonth, item.day) : item ? "" : defaultDateIn(startMonth || firstMonth(plan)),
     },
     (v) => ({
@@ -137,6 +147,7 @@ export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDele
   const save = form.guard((v) => {
     const next = { ...(item || { id: uid("t"), active: true }), name: v.name.trim(), amount: numOr(v.amount), via: decodeVia(v.via), flow: v.flow };
     if (v.flow === "move") next.to = v.to; else delete next.to;
+    if (v.flow === "out" && v.budget === "budget") next.budget = true; else delete next.budget;
     if (v.date) { next.startMonth = monthOfDate(v.date); next.day = dayOfDate(v.date); } else { delete next.startMonth; delete next.day; }
     return onSave(next);
   });
@@ -152,7 +163,8 @@ export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDele
             <option value="move">Move between my banks</option>
           </Select>
         </Field>
-        <MoneyField form={form} label="Amount each month" />
+        <MoneyField form={form} label={form.values.flow === "out" && form.values.budget === "budget" ? "Budget each month" : "Amount each month"} />
+        {form.values.flow === "out" && <PaidHowField form={form} />}
         <PaymentMethodField plan={plan} form={form} label={form.values.flow === "in" ? "Received into" : form.values.flow === "move" ? "Move from" : "Pay with"} />
         {form.values.flow === "move" && <BankField plan={plan} form={form} name="to" label="Move into" />}
         <DateField form={form} label="First payment" min={minDateFor(firstMonth(plan))} hint="Its day is used as the due day. Leave empty to include every month." />
@@ -213,11 +225,15 @@ export const describe = {
     amount: (i.variable ? "≈ " : "") + fmt((i.splits || []).reduce((s, x) => s + N(x.amount), 0)),
   }),
   wallets: (plan, w) => ({ sub: "From " + ((plan.banks.find((b) => b.id === w.from) || {}).name || "—"), amount: fmt(w.amount) + " / month" }),
-  cards: (plan, c) => ({ sub: "Billed to " + ((plan.banks.find((b) => b.id === c.bank) || {}).name || "no bank") + (c.note ? " · " + c.note : ""), amount: "" }),
+  cards: (plan, c) => {
+    const { issuer, network } = cardLogoIds(plan, c);
+    const kind = [bankInfo(issuer)?.name, networkInfo(network)?.name].filter(Boolean).join(" ");
+    return { sub: (kind ? kind + " · " : "") + "Billed to " + ((plan.banks.find((b) => b.id === c.bank) || {}).name || "no bank") + (c.note ? " · " + c.note : ""), amount: "" };
+  },
   templates: (plan, t, viaLabel) => ({
     sub: (t.flow === "move" ? viaLabel(plan, t.via) + " → " + ((plan.banks.find((b) => b.id === t.to) || {}).name || "—") : (t.flow === "in" ? "Receive · " : "") + viaLabel(plan, t.via))
-      + (t.day ? " · due " + ordinal(t.day) : "") + (t.startMonth ? " · from " + mShort(t.startMonth) : ""),
-    amount: fmt(t.amount),
+      + (t.budget ? " · budget" : "") + (t.day ? " · due " + ordinal(t.day) : "") + (t.startMonth ? " · from " + mShort(t.startMonth) : ""),
+    amount: (t.budget ? "≤ " : "") + fmt(t.amount),
   }),
   installments: (plan, it, viaLabel) => ({
     sub: viaLabel(plan, it.via) + " · " + (it.mode === "term" ? it.months + " months" : fmt(it.monthly) + " / month") + " from " + mShort(it.startMonth) + (it.day ? " · due " + ordinal(it.day) : "") + (it.auto ? " · auto-debit" : ""),

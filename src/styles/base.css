@@ -15,7 +15,7 @@
   --flag:#C8323F; --flagS:#FDEDEE; --flagB:#F3C2C7;
   --brass:#A15C07; --brassS:#FDF5E6; --brassB:#EED8AE;
   --violet:#6D3FD1; --violetS:#F3EFFD; --violetB:#D8CCF5;
-  --hi:linear-gradient(135deg,#4F46E5 0%,#6D5CF0 100%); --onHi:#FFFFFF; --onHiMute:rgba(255,255,255,.72);
+  --hi:linear-gradient(135deg,#4F46E5 0%,#6D5CF0 100%); --onHi:#FFFFFF; --onHiMute:rgba(255,255,255,.72); --hero:#1E1B4B; --onHeroMute:#C7CBF5;
   /* depth */
   --shadow-sm:0 1px 2px rgba(15,23,42,.05);
   --shadow:0 1px 3px rgba(15,23,42,.06),0 1px 2px rgba(15,23,42,.04);
@@ -36,7 +36,7 @@
   --flag:#FF7A85; --flagS:rgba(255,122,133,.12); --flagB:rgba(255,122,133,.34);
   --brass:#F5B94A; --brassS:rgba(245,185,74,.12); --brassB:rgba(245,185,74,.32);
   --violet:#B79CFF; --violetS:rgba(183,156,255,.13); --violetB:rgba(183,156,255,.32);
-  --hi:linear-gradient(135deg,#4C46D6 0%,#7357E8 100%); --onHi:#FFFFFF; --onHiMute:rgba(255,255,255,.7);
+  --hi:linear-gradient(135deg,#4C46D6 0%,#7357E8 100%); --onHi:#FFFFFF; --onHiMute:rgba(255,255,255,.7); --hero:#2B2875; --onHeroMute:#CFD2FA;
   --shadow-sm:0 1px 2px rgba(0,0,0,.3);
   --shadow:0 1px 3px rgba(0,0,0,.35);
   --shadow-lg:0 24px 60px rgba(0,0,0,.55);
@@ -54,7 +54,7 @@
     --flag:#FF7A85; --flagS:rgba(255,122,133,.12); --flagB:rgba(255,122,133,.34);
     --brass:#F5B94A; --brassS:rgba(245,185,74,.12); --brassB:rgba(245,185,74,.32);
     --violet:#B79CFF; --violetS:rgba(183,156,255,.13); --violetB:rgba(183,156,255,.32);
-    --hi:linear-gradient(135deg,#4C46D6 0%,#7357E8 100%); --onHi:#FFFFFF; --onHiMute:rgba(255,255,255,.7);
+    --hi:linear-gradient(135deg,#4C46D6 0%,#7357E8 100%); --onHi:#FFFFFF; --onHiMute:rgba(255,255,255,.7); --hero:#2B2875; --onHeroMute:#CFD2FA;
     --shadow-sm:0 1px 2px rgba(0,0,0,.3);
     --shadow:0 1px 3px rgba(0,0,0,.35);
     --shadow-lg:0 24px 60px rgba(0,0,0,.55);
@@ -79,5 +79,7 @@ body{margin:0;background:var(--bg);color:var(--ink)}
 .mmp h1,.mmp h2,.mmp h3{font-family:'Space Grotesk',system-ui,sans-serif;letter-spacing:-.015em;margin:0}
 .mmp ::selection{background:var(--accB)}
 
-.wrap{max-width:1320px;margin:0 auto;padding:0 20px 80px}
-@media(max-width:600px){.wrap{padding:0 12px 72px}}
+.wrap{max-width:1320px;margin:0 auto;padding:0 20px 80px;
+  padding-left:max(20px,env(safe-area-inset-left));padding-right:max(20px,env(safe-area-inset-right));padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+@media(max-width:600px){.wrap{padding:0 12px 72px;padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));
+  padding-bottom:calc(72px + env(safe-area-inset-bottom))}}
