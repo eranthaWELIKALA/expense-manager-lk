@@ -224,7 +224,7 @@ export function NewExpenseModal({ plan, monthKey, initialType = "monthly", onSav
         {v.type === "maybe" && <DateField form={form} label="When" min={minDate} />}
         {v.type === "monthly" && <PaidHowField form={form} />}
       </div>
-      {v.type === "installment" && <InstallmentFields form={form} minDate={minDate} />}
+      {v.type === "installment" && <InstallmentFields form={form} planStart={firstMonth(plan)} />}
     </FormModal>
   );
 }

@@ -3,7 +3,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { blankMonth } from "../../domain";
-import { RecordPaymentModal } from "./ExpenseModal";
+import { NewExpenseModal, RecordPaymentModal } from "./ExpenseModal";
 
 afterEach(cleanup);
 
@@ -70,5 +70,21 @@ describe("RecordPaymentModal", () => {
       type: "once", monthKey: "2026-08",
       item: { name: "Taxi", amount: 900, kind: "card", targetId: "c1", date: "2026-08-05", paid: true },
     });
+  });
+});
+
+describe("NewExpenseModal — installment", () => {
+  it("can start before the plan; earlier payments count as already made", async () => {
+    const onSave = vi.fn();
+    render(<NewExpenseModal plan={plan} monthKey="2026-08" onSave={onSave} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("radio", { name: /Installment/ }));
+    fireEvent.change(screen.getByLabelText("What for"), { target: { value: "Phone" } });
+    fireEvent.change(screen.getByLabelText("Total price"), { target: { value: "120000" } });
+    fireEvent.change(screen.getByLabelText("Months"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("First payment"), { target: { value: "2026-01-10" } });
+    expect(screen.getByText(/7 payments already made, so Aug 26 is payment 8 of 12/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Add installment" }));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0]).toMatchObject({ type: "installment", item: { name: "Phone", startMonth: "2026-01", months: 12 } });
   });
 });

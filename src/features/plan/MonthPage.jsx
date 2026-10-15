@@ -8,7 +8,7 @@ import { useViewMonth } from "../../hooks/useViewMonth";
 import {
   computeMonth, fmt, fmtK, mLabel, mShort, nextM, monthRail,
   N, isDateISO, isPayable, monthOfDate, setOverride, markPaid, recordPayment, removePayment, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, monthsToOpen, dayMonthLabel,
-  addTransfer, payCard, makeReal, withoutMaybes, viaLabel,
+  addTransfer, payCard, makeReal, withoutMaybes, viaLabel, firstMonth,
 } from "../../domain";
 import { NewExpenseModal, RecordPaymentModal } from "../editors/ExpenseModal";
 import { TransferModal } from "../editors/TransferModal";
@@ -158,7 +158,7 @@ export default function MonthPage() {
       toast.success(`“${item.name}” added to every month from ${mLabel(item.startMonth)}.`);
     } else {
       update((d) => addItem(d, "installments", item), { label: `Added installment “${item.name}”` });
-      toast.success(`Installment “${item.name}” added from ${mLabel(item.startMonth)}.`);
+      toast.success(`Installment “${item.name}” added from ${mLabel(item.startMonth)}.` + (item.startMonth < firstMonth(plan) ? ` Payments before ${mLabel(firstMonth(plan))} count as already paid.` : ""));
     }
     setAdding(null);
   };

@@ -1,6 +1,6 @@
 import React from "react";
 import { Field, Select, TextInput } from "../../components/ui";
-import { fmt, mLabel, monthOfDate, numOr, todayISO } from "../../domain";
+import { fmt, isDateISO, mDiff, mLabel, mShort, monthOfDate, numOr, todayISO } from "../../domain";
 import { BANKS, NETWORKS, NO_LOGO, bankInfo, guessBank, guessNetwork, networkInfo } from "../../lib/banks";
 
 /* Form fields shared by every add/edit modal. Values are strings while editing. */
@@ -114,8 +114,33 @@ export function PaidHowField({ form, name = "budget" }) {
   );
 }
 
-/** Installment terms: fixed number of months, or a monthly amount until the total is paid. */
-export function InstallmentFields({ form, minDate }) {
+/**
+ * How an installment that started before the plan's first month will show:
+ * the payments before it count as already paid, and it carries on from there.
+ */
+function startedBefore(v, planStart) {
+  if (!planStart || !isDateISO(v.date)) return null;
+  const before = mDiff(monthOfDate(v.date), planStart); // months already paid before the plan starts
+  if (before <= 0) return null;
+  const total = numOr(v.total), first = mShort(planStart), from = mLabel(planStart);
+  if (v.mode === "term") {
+    const months = Math.round(numOr(v.months));
+    if (!(months >= 1)) return null;
+    if (before >= months) return `Started before this plan (${from}) and fully paid by then, so it won't show in any month.`;
+    return `Started before this plan (${from}): ${before} payment${before === 1 ? "" : "s"} already made, so ${first} is payment ${before + 1} of ${months}.`;
+  }
+  const monthly = numOr(v.monthly);
+  if (!(monthly > 0) || !(total > 0)) return null;
+  const paid = Math.min(total, numOr(v.prepaid) + before * monthly);
+  if (paid >= total - 0.005) return `Started before this plan (${from}) and fully paid by then, so it won't show in any month.`;
+  return `Started before this plan (${from}): ${fmt(paid, 0)} already paid, ${fmt(total - paid, 0)} left from ${first}.`;
+}
+
+/**
+ * Installment terms: fixed number of months, or a monthly amount until the total is paid.
+ * The first payment can be before `planStart` (the plan's first month) — earlier months are skipped.
+ */
+export function InstallmentFields({ form, planStart }) {
   const v = form.values;
   const total = numOr(v.total), prepaid = numOr(v.prepaid);
   const preview = v.mode === "term"
@@ -135,7 +160,7 @@ export function InstallmentFields({ form, minDate }) {
           ? <MoneyField form={form} name="months" label="Months" />
           : <MoneyField form={form} name="monthly" label="Pay each month" />}
         {v.mode === "open" && <MoneyField form={form} name="prepaid" label="Already paid" hint="Down payment, if any" />}
-        <DateField form={form} label="First payment" min={minDate} />
+        <DateField form={form} label="First payment" hint="Can be before this plan started." />
         <Field label="Each month" hint={v.auto === "auto" ? "Marked paid on its due day. Untick it if a deduction fails." : "Tick it off in the month when you pay."}>
           <Select value={v.auto || "manual"} onChange={form.set("auto")}>
             <option value="manual">I pay it myself</option>
@@ -144,6 +169,7 @@ export function InstallmentFields({ form, minDate }) {
         </Field>
       </div>
       {preview && <div className="preview">≈ <b>{preview}</b>{v.date ? ", from " + mLabel(monthOfDate(v.date)) : ""}.</div>}
+      {startedBefore(v, planStart) && <div className="preview">{startedBefore(v, planStart)}</div>}
     </>
   );
 }

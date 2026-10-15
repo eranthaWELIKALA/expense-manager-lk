@@ -420,3 +420,19 @@ describe("budgets (spent in several payments)", () => {
     expect(computeMonth(d, now).ls.find((l) => l.key === "t:t1")).toMatchObject({ done: true, actual: 2000 });
   });
 });
+
+describe("installments started before the plan", () => {
+  it("skip the months before the plan and carry on from there", () => {
+    const d = plan(); // starts Aug 2026
+    d.installments = [{ id: "i9", name: "Phone", mode: "term", total: 1200, months: 12, startMonth: "2026-01", via: { kind: "bank", id: "b1" } }];
+    const line = computeMonth(d, "2026-08").ls.find((l) => l.key === "i:i9");
+    expect(line.tag).toMatch(/^8\/12/); // Jan–Jul already paid
+    expect(line.plan).toBe(100);
+    expect(instPaid(d.installments[0], "2026-08")).toBe(800);
+  });
+  it("don't show at all when paid off before the plan starts", () => {
+    const d = plan();
+    d.installments = [{ id: "i9", name: "Old", mode: "term", total: 600, months: 6, startMonth: "2025-06", via: { kind: "bank", id: "b1" } }];
+    expect(computeMonth(d, "2026-08").ls.some((l) => l.key === "i:i9")).toBe(false);
+  });
+});

@@ -186,13 +186,13 @@ export const installmentDefaults = (plan, startMonth, item) => ({
   auto: item?.auto ? "auto" : "manual",
 });
 
-export const validateInstallment = (v, plan) => ({
+export const validateInstallment = (v, _plan) => ({
   name: validateName(v.name),
   total: validateAmount(v.total, { positive: true, label: "Total" }),
   months: v.mode === "term" ? validateAmount(v.months, { positive: true, integer: true, max: 600, label: "Months" }) : "",
   monthly: v.mode === "open" ? validateAmount(v.monthly, { positive: true, label: "Monthly amount" }) : "",
   prepaid: v.mode === "open" ? validateAmount(v.prepaid, { required: false, label: "Already paid" }) || (numOr(v.prepaid) >= numOr(v.total) && numOr(v.total) > 0 ? "Already paid must be less than the total." : "") : "",
-  date: validateDate(v.date, { min: minDateFor(firstMonth(plan)), max: maxDate(), minLabel: "the plan's first month" }),
+  date: validateDate(v.date, { max: maxDate() }), // may be before the plan: earlier months count as paid
   via: v.via ? "" : "Choose how it's paid.",
 });
 
@@ -212,7 +212,7 @@ export function InstallmentModal({ plan, item, startMonth, onSave, onClose, onDe
       submitLabel={item ? "Save" : "Add installment"} onSubmit={save} onClose={onClose} onDelete={onDelete}>
       <NameField form={form} placeholder="e.g. Laptop" />
       <PaymentMethodField plan={plan} form={form} />
-      <InstallmentFields form={form} minDate={minDateFor(firstMonth(plan))} />
+      <InstallmentFields form={form} planStart={firstMonth(plan)} />
     </FormModal>
   );
 }
