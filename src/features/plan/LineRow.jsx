@@ -24,9 +24,10 @@ const Dot = ({ ratio, neg }) => (
  */
 export function LineRow({ line, balanceBase, showBalance = true, lockedHint, actions, account }) {
   const ro = !actions;
+  const bal = line.actualBal ?? line.bal; // what's really there after this line
   return (
     <div className={"row" + (line.done ? " done" : "") + (line.maybe ? " maybe" : "")}>
-      {showBalance ? <span className="rail-c"><Dot ratio={line.bal / balanceBase} neg={line.bal < 0} /></span> : <span />}
+      {showBalance ? <span className="rail-c"><Dot ratio={bal / balanceBase} neg={bal < 0} /></span> : <span />}
       {line.maybe
         ? <button type="button" className="chk maybe" disabled={ro} aria-label={"Keep “" + line.label + "” — make it a real payment"} title="What-if — click to keep it as a real payment"
           onClick={() => actions.keep(line.key)}>?</button>
@@ -45,7 +46,7 @@ export function LineRow({ line, balanceBase, showBalance = true, lockedHint, act
         <AmountInput className="act" value={line.actual} readOnly={ro || line.origin === "part" || line.origin === "transfer" || !!line.portions}
           title={line.portions ? "Paid in parts — tick it or use Record payment to add more" : undefined} aria-label={line.label + " actual"}
           onChange={(v) => actions.set(line.key, "actual", v)} />
-        {showBalance && <span className={"bal " + (line.bal < 0 ? "neg" : "")}>{fmt(line.bal)}</span>}
+        {showBalance && <span className={"bal " + (bal < 0 ? "neg" : "")}>{fmt(bal)}</span>}
       </span>
       {ro ? <span /> : <RemoveButton label="Remove from this month" onClick={() => actions.remove(line.key)} />}
     </div>

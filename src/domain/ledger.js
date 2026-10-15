@@ -227,8 +227,9 @@ function doMonth(d, key, depth) {
     const rows = ls.filter((l) => l.kind === kind && l.id === o.id)
       .slice().sort((a, b) => order(a) - order(b) || (a.day || 0) - (b.day || 0))
       .map((l) => { const a = val(l); bal += l.flow === "in" ? a : -a; return { ...l, amt: a, bal }; });
-    // what's really there now: only money that has actually come in or gone out
-    const actual = rows.filter((l) => !l.maybe).reduce((s, l) => s + (l.flow === "in" ? settled(l) : -settled(l)), opening);
+    // what's really there: only money that has actually come in or gone out (actualBal = running, per row)
+    let actual = opening;
+    rows.forEach((l) => { if (!l.maybe) actual += l.flow === "in" ? settled(l) : -settled(l); l.actualBal = actual; });
     return { o, opening, rows, closing: bal, actual };
   };
 

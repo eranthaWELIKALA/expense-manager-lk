@@ -465,3 +465,18 @@ describe("actual balance", () => {
     expect(after.actual).toBe(before.actual - 500); // but only 500 has really gone
   });
 });
+
+describe("actual running balance", () => {
+  it("follows only what has really moved, row by row", () => {
+    const now = currentMonthKey();
+    const d = plan();
+    d.templates = [...d.templates, { id: "t9", name: "Cricket", amount: 6000, via: { kind: "bank", id: "b1" }, flow: "out", budget: true }];
+    d.months = { [now]: blankMonth() };
+    const bank = computeMonth(recordPayment(d, now, "t:t9", { amount: 1000, via: { kind: "bank", id: "b1" }, date: now + "-05" }), now).banks[0];
+    const rows = bank.rows;
+    const i = rows.findIndex((r) => r.key === "t:t9");
+    const before = i ? rows[i - 1].actualBal : bank.opening;
+    expect(rows[i].actualBal).toBe(before - 1000);
+    expect(rows[rows.length - 1].actualBal).toBe(bank.actual);
+  });
+});
