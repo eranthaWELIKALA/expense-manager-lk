@@ -415,6 +415,11 @@ describe("budgets (spent in several payments)", () => {
     expect(line(past, old)).toMatchObject({ done: true, paid: 2500, remaining: 0 });
   });
 
+  it("keeps an optional note on each payment", () => {
+    const d = pay(pay(withBudget(now), now, 2500, { note: "  New bat " }), now, 1500, { note: "  " });
+    expect(line(d, now).payments.map((p) => p.note)).toEqual(["New bat", undefined]);
+  });
+
   it("bills keep the part-payment behaviour", () => {
     const d = recordPayment(withBudget(now), now, "t:t1", { amount: 2000, via: { kind: "bank", id: "b1" }, date: now + "-05" });
     expect(computeMonth(d, now).ls.find((l) => l.key === "t:t1")).toMatchObject({ done: true, actual: 2000 });

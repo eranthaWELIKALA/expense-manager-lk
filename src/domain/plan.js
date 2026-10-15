@@ -151,9 +151,9 @@ export function markPaid(d, mk, lineKey, { actual, via, date }) {
  * A single payment that covers it (or `settle`s it) is stored as a plain paid line;
  * otherwise it's added to the line's parts, and the line counts as paid once the parts reach
  * the planned amount (or a part `settle`s it, e.g. the bill came in lower).
- * payment: {amount, via, date, settle?}
+ * payment: {amount, via, date, settle?, note?}
  */
-export function recordPayment(d, mk, lineKey, { amount, via, date, settle = false }) {
+export function recordPayment(d, mk, lineKey, { amount, via, date, settle = false, note }) {
   const line = lines(d, mk).find((l) => l.key === lineKey);
   if (!line) throw new Error("That payment isn't in this month.");
   const M = monthOf(d, mk);
@@ -169,6 +169,7 @@ export function recordPayment(d, mk, lineKey, { amount, via, date, settle = fals
   const part = { id: uid("p"), amount };
   if (via && via.kind && via.id) part.via = { kind: via.kind, id: via.id };
   if (isDateISO(date)) part.date = date;
+  if (note && String(note).trim()) part.note = String(note).trim().slice(0, 80);
   const { actual: _a, paidOn: _p, done: _d, ...rest } = prev;
   const next = { ...rest, payments: [...parts, part] };
   if (settle) next.done = true; // otherwise "paid" follows the total

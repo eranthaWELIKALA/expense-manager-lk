@@ -5,7 +5,7 @@ import {
   dayMonthLabel, dayOfDate, defaultDateIn, firstMonth, fmt, isDateISO, isPayable, lines, mLabel, monthOfDate, numOr, todayISO, uid, viaLabel,
 } from "../../domain";
 import { validateAmount, validateDate, validateName } from "../../lib/validation";
-import { DateField, InstallmentFields, MoneyField, NameField, PaidHowField, PaymentMethodField, decodeVia, defaultVia, maxDate, minDateFor } from "./fields";
+import { DateField, InstallmentFields, MoneyField, NameField, PaidHowField, PaymentMethodField, TextField, decodeVia, defaultVia, maxDate, minDateFor } from "./fields";
 import { installmentDefaults, installmentFromForm, validateInstallment } from "./itemModals";
 
 /** Payments due in the month of `date` that can be recorded as paid. */
@@ -26,7 +26,7 @@ function PartsSoFar({ plan, line, onRemove }) {
       {line.payments.map((p) => (
         <div className="part" key={p.id}>
           <span>{isDateISO(p.date) ? dayMonthLabel(p.date) : "—"}</span>
-          <span className="mut">{viaLabel(plan, p.via || { kind: line.kind, id: line.id })}</span>
+          <span className="mut">{p.note ? <>{p.note} · </> : null}{viaLabel(plan, p.via || { kind: line.kind, id: line.id })}</span>
           <b className="n">{fmt(p.amount)}</b>
           {onRemove && <RemoveButton label={`Remove the ${fmt(p.amount)} part`} onClick={() => onRemove(line, p)} />}
         </div>
@@ -42,7 +42,7 @@ function PartsSoFar({ plan, line, onRemove }) {
  * (scheduled if the date is ahead).
  * `fixedLine` skips the search (ticking a line on the Month page).
  *
- * onSave({type: "pay", monthKey, line, payment: {amount, via, date, settle}})
+ * onSave({type: "pay", monthKey, line, payment: {amount, via, date, settle, note?}})
  *      | ({type: "once", monthKey, item: {name, amount, kind, targetId, date, paid}})
  * onRemovePart(line, part)? — remove an already-recorded part.
  */
@@ -52,8 +52,8 @@ export function RecordPaymentModal({ plan, monthKey, fixedLine, onSave, onRemove
   const rest = (l) => (l.budget ? "" : String(l.remaining > 0.005 ? l.remaining : l.actual ?? l.plan));
   const form = useForm(
     fixedLine
-      ? { text: fixedLine.label, line: fixedLine.key, amount: rest(fixedLine), via: fixedLine.kind + "|" + fixedLine.id, date: defaultDateIn(monthKey), settle: "" }
-      : { text: "", line: "", amount: "", via: defaultVia(plan), date: defaultDateIn(monthKey), settle: "" },
+      ? { text: fixedLine.label, line: fixedLine.key, amount: rest(fixedLine), via: fixedLine.kind + "|" + fixedLine.id, date: defaultDateIn(monthKey), settle: "", note: "" }
+      : { text: "", line: "", amount: "", via: defaultVia(plan), date: defaultDateIn(monthKey), settle: "", note: "" },
     (v) => {
       const due = payableIn(plan, v.date);
       return {
@@ -92,7 +92,7 @@ export function RecordPaymentModal({ plan, monthKey, fixedLine, onSave, onRemove
 
   const save = form.guard((vals) => {
     const monthOf = monthOfDate(vals.date);
-    if (selected) return onSave({ type: "pay", monthKey: monthOf, line: selected, payment: { amount: numOr(vals.amount), via: decodeVia(vals.via), date: vals.date, settle: !!settles } });
+    if (selected) return onSave({ type: "pay", monthKey: monthOf, line: selected, payment: { amount: numOr(vals.amount), via: decodeVia(vals.via), date: vals.date, settle: !!settles, ...(budget && vals.note.trim() ? { note: vals.note.trim() } : {}) } });
     const via = decodeVia(vals.via);
     return onSave({
       type: "once", monthKey: monthOf,
@@ -137,6 +137,7 @@ export function RecordPaymentModal({ plan, monthKey, fixedLine, onSave, onRemove
         <PaymentMethodField plan={plan} form={form} label="Paid with" />
         <DateField form={form} label="Date" min={minDate} hint={ahead && !selected ? "In the future — saved as scheduled, not paid." : "Its month is where it's recorded."} />
       </div>
+      {budget && <TextField form={form} name="note" label="Note" placeholder="optional — e.g. Keells, new bat" />}
       {selected && (
         <label className="check">
           <input type="checkbox" checked={!!settles} onChange={(e) => form.set("settle", e.target.checked ? "yes" : "no")} />

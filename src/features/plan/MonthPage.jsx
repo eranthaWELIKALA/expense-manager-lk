@@ -138,7 +138,7 @@ export default function MonthPage() {
     if (type === "pay" && line.budget) {
       const spent = (line.paid || 0) + payment.amount;
       update((d) => recordPayment(ensureMonthsThrough(d, monthKey), monthKey, line.key, payment),
-        { label: `${line.label} — spent ${fmt(payment.amount)} on ${dayMonthLabel(payment.date)}` });
+        { label: `${line.label} — spent ${fmt(payment.amount)} on ${dayMonthLabel(payment.date)}` + (payment.note ? ` (${payment.note})` : "") });
       toast.success(`${fmt(payment.amount)} added to “${line.label}” — ${fmt(spent, 0)} of ${fmt(line.plan, 0)} spent` + (monthKey === mk ? "." : ` in ${mLabel(monthKey)}.`));
       setPaying(null);
     } else if (type === "pay") {

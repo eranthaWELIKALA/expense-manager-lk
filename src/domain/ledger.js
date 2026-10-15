@@ -96,7 +96,7 @@ function computeLines(d, key) {
     pays.filter((p) => !here(p)).forEach((p) => out.push({
       key: "p:" + base.key + ":" + p.id, label: base.label + " (part)", kind: p.via.kind, id: p.via.id, flow: base.flow,
       plan: null, actual: N(p.amount), done: true, origin: "part", locked: true, day: base.day || null,
-      tag: isDateISO(p.date) ? "paid " + dayMonthLabel(p.date) : null,
+      tag: joinTags(p.note || null, isDateISO(p.date) ? "paid " + dayMonthLabel(p.date) : null),
     }));
   };
   const planOf = (k, fallback) => { const o = M.ov[k]; return o && o.plan !== undefined ? o.plan : fallback; };
