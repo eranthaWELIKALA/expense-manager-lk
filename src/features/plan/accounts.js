@@ -1,3 +1,4 @@
+import { N, todayISO } from "../../domain";
 import { accountLogo } from "../../lib/banks";
 
 /**
@@ -31,7 +32,9 @@ export function monthAccounts(plan, month) {
       key: "card:" + C.o.id, kind: "card", o: C.o, name: C.o.name, rows: C.rows,
       logo: accountLogo(plan, "card", C.o),
       note: C.o.note || "", bankName: bankName(C.o.bank),
-      plan: C.plan, charged: C.charged, paid: C.paid, due: C.due, balance: C.due, over: C.actual > C.plan + 0.005 && C.actual > 0,
+      plan: C.plan, charged: C.charged, paid: C.paid, due: C.due, bill: C.bill,
+      balance: C.balance, limit: N(C.o.limit) > 0 ? N(C.o.limit) : null, available: C.available, overLimit: C.available !== null && C.available < -0.005,
+      late: !!(C.bill && C.bill.left > 0.005 && C.bill.date && C.bill.date < todayISO()), over: C.actual > C.plan + 0.005 && C.actual > 0,
       short: false, open: C.rows.filter(isOpen).length,
     })),
   };

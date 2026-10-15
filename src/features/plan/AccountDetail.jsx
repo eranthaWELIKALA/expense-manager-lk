@@ -1,6 +1,6 @@
 import React from "react";
-import { AccountLogo, Badge, Button, EmptyState, cx } from "../../components/ui";
-import { fmt, val } from "../../domain";
+import { AccountLogo, Badge, EmptyState, cx } from "../../components/ui";
+import { dayMonthLabel, fmt, ordinal, val } from "../../domain";
 import { LineHeader, LineRow } from "./LineRow";
 import { isOpen } from "./accounts";
 
@@ -15,7 +15,7 @@ const LOCKED_HINT = { bank: "Comes from elsewhere — change it at the source", 
  * Right column of the month view: one account's lines, or (account = null)
  * every open line across accounts. `openRows` = [{line, account}] for that view.
  */
-export function AccountDetail({ account, openRows, actions, openOnly, onOpenOnly, nextLabel, monthLabel, onMoveNext }) {
+export function AccountDetail({ account, openRows, actions, openOnly, onOpenOnly, nextLabel }) {
   let head, stats, body;
   if (!account) {
     const toPay = openRows.filter((r) => r.line.flow === "out").reduce((s, r) => s + val(r.line), 0);
@@ -40,16 +40,18 @@ export function AccountDetail({ account, openRows, actions, openOnly, onOpenOnly
     const rows = openOnly ? a.rows.filter(isOpen) : a.rows;
     head = {
       title: a.name, logo: a.logo,
-      badges: <>{a.kind === "cash" && <Badge tone="brass">cash</Badge>}{card && a.over && <Badge tone="flag">over plan</Badge>}{a.short && <Badge tone="flag">short</Badge>}</>,
+      badges: <>{a.kind === "cash" && <Badge tone="brass">cash</Badge>}{card && a.late && <Badge tone="flag">bill overdue</Badge>}{card && a.overLimit && <Badge tone="flag">over limit</Badge>}{card && a.over && <Badge tone="flag">over plan</Badge>}{a.short && <Badge tone="flag">short</Badge>}</>,
       note: card
-        ? <>{a.due > 0.005 ? <>Bills <b>{a.bankName || "no bank set"}</b> in {nextLabel}</> : "No charges yet"}{a.note ? " · " + a.note : ""}</>
+        ? <>{!a.o.bank ? "No bank set — pay it from any bank with Move money" : a.due > 0.005 ? <>Bills <b>{a.bankName}</b> in {nextLabel}</> : "No charges yet"}{a.o.dueDay ? " · pay by the " + ordinal(a.o.dueDay) : ""}{a.note ? " · " + a.note : ""}</>
         : a.note,
     };
     stats = card
       ? [
+        <Stat key="o" label="Balance" value={fmt(a.balance, 0)} tone={a.overLimit ? "neg" : undefined} />,
+        ...(a.limit ? [<Stat key="l" label={"Available of " + fmt(a.limit, 0)} value={fmt(a.available, 0)} tone={a.overLimit ? "neg" : "pos"} />] : []),
+        ...(a.bill && a.bill.amount > 0.005 ? [<Stat key="d" label={a.bill.date ? "Pay by " + dayMonthLabel(a.bill.date) : "Bill this month"}
+          value={a.bill.left > 0.005 ? fmt(a.bill.left, 0) : "Paid"} tone={a.late ? "neg" : a.bill.left > 0.005 ? undefined : "pos"} />] : []),
         <Stat key="c" label="Charged" value={fmt(a.charged, 0)} />,
-        <Stat key="p" label="Planned" value={fmt(a.plan, 0)} />,
-        ...(a.paid > 0.005 ? [<Stat key="a" label="Paid ahead" value={fmt(a.paid, 0)} tone="pos" />] : []),
         <Stat key="b" label={"To bill in " + nextLabel} value={fmt(a.due, 0)} />,
       ]
       : [
@@ -90,12 +92,6 @@ export function AccountDetail({ account, openRows, actions, openOnly, onOpenOnly
       </div>
       <div className="dstats">{stats}</div>
       <div className="acct-b">{body}</div>
-      {onMoveNext && (
-        <div className="acct-f">
-          <span>Done with {monthLabel}? Balances and open lines carry over.</span>
-          <Button size="sm" onClick={onMoveNext}>Move into {nextLabel} <span aria-hidden>→</span></Button>
-        </div>
-      )}
     </section>
   );
 }

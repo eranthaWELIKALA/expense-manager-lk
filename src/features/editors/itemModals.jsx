@@ -58,11 +58,20 @@ export function WalletModal({ plan, item, onSave, onClose, onDelete }) {
 /* ---------------- card ---------------- */
 export function CardModal({ plan, item, onSave, onClose, onDelete }) {
   const form = useForm(
-    { name: str(item?.name), bank: item ? item.bank || "" : plan.banks[0]?.id || "", note: str(item?.note), issuer: str(item?.issuer), network: str(item?.network) },
-    (v) => ({ name: validateName(v.name) }),
+    { name: str(item?.name), bank: item ? item.bank || "" : plan.banks[0]?.id || "", note: str(item?.note), issuer: str(item?.issuer), network: str(item?.network),
+      limit: str(item?.limit ?? ""), dueDay: str(item?.dueDay ?? "") },
+    (v) => ({
+      name: validateName(v.name),
+      limit: validateAmount(v.limit, { required: false, label: "Credit limit" }),
+      dueDay: validateAmount(v.dueDay, { required: false, positive: true, integer: true, max: 31, label: "Day" }),
+    }),
   );
-  const save = form.guard((v) => onSave(withChoice(withChoice(
-    { ...(item || { id: uid("c") }), name: v.name.trim(), bank: v.bank, note: v.note.trim() }, "issuer", v.issuer), "network", v.network)));
+  const save = form.guard((v) => {
+    const card = withChoice(withChoice({ ...(item || { id: uid("c") }), name: v.name.trim(), bank: v.bank, note: v.note.trim() }, "issuer", v.issuer), "network", v.network);
+    if (numOr(v.limit) > 0) card.limit = numOr(v.limit); else delete card.limit;
+    if (numOr(v.dueDay) >= 1) card.dueDay = Math.round(numOr(v.dueDay)); else delete card.dueDay;
+    return onSave(card);
+  });
   return (
     <FormModal title={titleFor(item, "card")} description="Charges build up all month; the total debits the bank you choose, next month."
       submitLabel={item ? "Save" : "Add card"} onSubmit={save} onClose={onClose} onDelete={onDelete}>
@@ -71,7 +80,14 @@ export function CardModal({ plan, item, onSave, onClose, onDelete }) {
         <LogoField form={form} name="issuer" label="Issued by" />
         <LogoField form={form} name="network" label="Network" networks />
       </div>
-      <BankField plan={plan} form={form} name="bank" label="Bill paid from" allowNone noneLabel="Not billed to a bank" />
+      <BankField plan={plan} form={form} name="bank" label="Bill usually paid from" allowNone noneLabel="No usual bank"
+        hint={form.values.bank
+          ? "Next month's balance plans the bill from here. You can still pay it from any bank with Move money → Pay a card."
+          : "The bill is kept on the card and paid from whichever bank you choose — but no bank's balance plans for it ahead."} />
+      <div className="form-grid">
+        <MoneyField form={form} name="limit" label="Credit limit" hint="Optional — shows what's still available." />
+        <MoneyField form={form} name="dueDay" label="Pay by (day of month)" hint="Optional — e.g. 25 for the 25th." />
+      </div>
       <TextField form={form} name="note" label="Note" placeholder="e.g. statement date 20th" />
     </FormModal>
   );
@@ -233,7 +249,8 @@ export const describe = {
   cards: (plan, c) => {
     const { issuer, network } = cardLogoIds(plan, c);
     const kind = [bankInfo(issuer)?.name, networkInfo(network)?.name].filter(Boolean).join(" ");
-    return { sub: (kind ? kind + " · " : "") + "Billed to " + ((plan.banks.find((b) => b.id === c.bank) || {}).name || "no bank") + (c.note ? " · " + c.note : ""), amount: "" };
+    return { sub: (kind ? kind + " · " : "") + "Billed to " + ((plan.banks.find((b) => b.id === c.bank) || {}).name || "no bank")
+      + (c.dueDay ? " · pay by " + ordinal(c.dueDay) : "") + (c.note ? " · " + c.note : ""), amount: N(c.limit) > 0 ? "limit " + fmt(c.limit) : "" };
   },
   templates: (plan, t, viaLabel) => ({
     sub: (t.flow === "move" ? viaLabel(plan, t.via) + " → " + ((plan.banks.find((b) => b.id === t.to) || {}).name || "—") : (t.flow === "in" ? "Receive · " : "") + viaLabel(plan, t.via))

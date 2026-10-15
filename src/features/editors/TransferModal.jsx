@@ -1,7 +1,7 @@
 import React from "react";
 import { Field, FormModal, Segmented, Select } from "../../components/ui";
 import { useForm } from "../../hooks/useForm";
-import { defaultDateIn, firstMonth, fmt, isDateISO, lines, mLabel, mShort, monthOfDate, nextM, numOr, computeMonth } from "../../domain";
+import { defaultDateIn, firstMonth, fmt, isDateISO, mLabel, mShort, monthOfDate, nextM, numOr, computeMonth } from "../../domain";
 import { validateAmount, validateDate } from "../../lib/validation";
 import { DateField, MoneyField, TextField, maxDate, minDateFor } from "./fields";
 
@@ -36,10 +36,10 @@ function cardPreview(plan, v) {
   if (!to || to.kind !== "card" || !(amount > 0) || !isDateISO(v.date)) return null;
   const mk = monthOfDate(v.date);
   if (!plan.months[mk]) return `It's in ${mLabel(mk)}, which isn't started yet — it starts when you save.`;
-  const bill = lines(plan, mk).find((l) => l.key === "b:" + to.id);
-  const owed = bill && !bill.done ? bill.remaining : 0;
-  const toBill = Math.min(amount, owed), ahead = amount - toBill;
   const card = computeMonth(plan, mk).cards.find((c) => c.o.id === to.id);
+  const bill = card && card.bill; // on the bank's side, or carried on the card when it has no bank
+  const owed = bill ? bill.left : 0;
+  const toBill = Math.min(amount, owed), ahead = amount - toBill;
   const parts = [];
   if (owed > 0.005) parts.push(toBill >= owed - 0.005 ? `Settles the ${mShort(mk)} bill (${fmt(owed, 0)}).` : `Pays ${fmt(toBill, 0)} of the ${mShort(mk)} bill — ${fmt(owed - toBill, 0)} still to pay.`);
   else parts.push(bill ? `The ${mShort(mk)} bill is already paid.` : `No bill is due in ${mShort(mk)}.`);

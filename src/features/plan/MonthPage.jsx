@@ -289,7 +289,7 @@ export default function MonthPage() {
       <div className="mwork">
         <AccountList accounts={accounts} selected={current ? current.key : "open"} onSelect={setSelected} openCount={openRows.length} />
         <AccountDetail account={current} openRows={openRows} actions={actions} openOnly={openOnly} onOpenOnly={setOpenOnly}
-          nextLabel={nextLabel} monthLabel={mLabel(mk)} onMoveNext={canEdit ? () => setRolling(true) : undefined} />
+          nextLabel={nextLabel} />
       </div>
 
       {rolling && (

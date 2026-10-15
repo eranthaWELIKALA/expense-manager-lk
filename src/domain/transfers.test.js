@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addOneOff, addTransfer, blankMonth, computeMonth, lines, makeReal, normalizePlan, payCard, removeLine, withoutMaybes,
+  addOneOff, addTransfer, blankMonth, computeMonth, lines, makeReal, markPaid, normalizePlan, payCard, removeLine, withoutMaybes,
 } from "./index";
 
 /* Aug: card c1 is charged Food 300 + TV 100 = 400, billed to b1 in Sep. */
@@ -93,5 +93,42 @@ describe("what-ifs", () => {
     const real = makeReal(d, AUG, line.key);
     expect(lines(real, AUG).find((l) => l.label === "New phone").maybe).toBeUndefined();
     expect(withoutMaybes(real)).toBe(real);
+  });
+});
+
+describe("card balance, limit and due date", () => {
+  const withTerms = () => { const d = plan(); d.cards = [{ ...d.cards[0], limit: 1000, dueDay: 25 }]; return d; };
+
+  it("owes last month's bill until it's paid, plus charges made so far", () => {
+    const m = computeMonth(withTerms(), SEP);
+    expect(card(m, "c1")).toMatchObject({ balance: 400, available: 600, bill: { amount: 400, left: 400, date: "2026-09-25", done: false } });
+    expect(lines(withTerms(), SEP).find((l) => l.key === "b:c1")).toMatchObject({ day: 25, tag: "Aug 26 · due 25th" });
+    const ticked = markPaid(withTerms(), SEP, "t:t2", { actual: 300 }); // Food charged this month
+    expect(card(computeMonth(ticked, SEP), "c1").balance).toBe(700);
+  });
+
+  it("drops once the bill is paid", () => {
+    const d = payCard(withTerms(), SEP, { cardId: "c1", bankId: "b1", amount: 400, date: "2026-09-05" }).plan;
+    expect(card(computeMonth(d, SEP), "c1")).toMatchObject({ balance: 0, available: 1000, bill: { left: 0, done: true } });
+  });
+});
+
+describe("cards with no bank", () => {
+  const noBank = () => { const d = plan(); d.cards = [{ id: "c1", name: "Card", bank: "", dueDay: 25 }]; return d; };
+
+  it("keep last month's charges as the card's own bill", () => {
+    const m = computeMonth(noBank(), SEP);
+    expect(lines(noBank(), SEP).some((l) => l.key === "b:c1")).toBe(false); // nothing on any bank
+    expect(card(m, "c1")).toMatchObject({ balance: 400, bill: { amount: 400, left: 400, date: "2026-09-25" } });
+  });
+
+  it("settle that bill first from any bank, the rest is paid ahead", () => {
+    let r = payCard(noBank(), SEP, { cardId: "c1", bankId: "b2", amount: 150, date: "2026-09-05" });
+    expect(r).toMatchObject({ toBill: 150, ahead: 0 });
+    r = payCard(r.plan, SEP, { cardId: "c1", bankId: "b1", amount: 350, date: "2026-09-06" });
+    expect(r).toMatchObject({ toBill: 250, ahead: 100 });
+    const m = computeMonth(r.plan, SEP);
+    expect(card(m, "c1")).toMatchObject({ balance: 0, bill: { left: 0, done: true }, paid: 100, due: 300 }); // Sep charges 400 − 100 ahead
+    expect(bank(m, "b2").closing).toBe(bank(computeMonth(noBank(), SEP), "b2").closing - 150);
   });
 });

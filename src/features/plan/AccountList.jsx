@@ -1,10 +1,14 @@
 import React, { useState } from "react";
 import { AccountLogo, cx } from "../../components/ui";
-import { fmt } from "../../domain";
+import { dayMonthLabel, fmt } from "../../domain";
 
 const status = (a) => {
   if (a.short) return { text: "goes short", dot: "short" };
-  if (a.kind === "card") return { text: a.open ? a.open + " open" : a.due > 0.005 ? "bills next month" : "no charges", dot: a.open ? "open" : "ok" };
+  if (a.kind === "card") {
+    if (a.late) return { text: "bill overdue", dot: "short" };
+    if (a.bill && a.bill.left > 0.005) return { text: "pay " + fmt(a.bill.left, 0) + (a.bill.date ? " by " + dayMonthLabel(a.bill.date) : ""), dot: "open" };
+    return { text: a.open ? a.open + " open" : a.due > 0.005 ? "bills next month" : "no charges", dot: a.open ? "open" : "ok" };
+  }
   return { text: a.open ? a.open + " open" : "all settled", dot: a.open ? "open" : "ok" };
 };
 
@@ -14,7 +18,7 @@ function AccountButton({ a, on, onSelect }) {
     <button type="button" className={cx("acc", on && "on")} aria-current={on || undefined} onClick={() => onSelect(a.key)}>
       <AccountLogo {...a.logo} name={a.name} />
       <span className="acc-main"><b>{a.name}</b><small><span className={"sdot " + s.dot} aria-hidden />{s.text}</small></span>
-      <span className={cx("acc-bal n", a.short && "neg")}>{fmt(a.balance, 0)}</span>
+      <span className={cx("acc-bal n", (a.short || a.overLimit) && "neg")}>{fmt(a.balance, 0)}</span>
     </button>
   );
 }
@@ -40,7 +44,7 @@ export function AccountList({ accounts, selected, onSelect, openCount }) {
   const groups = [
     { label: "Banks", items: accounts.banks, total: fmt(total(accounts.banks, (x) => x.closing), 0) },
     { label: "Cash", items: accounts.wallets, total: fmt(total(accounts.wallets, (x) => x.closing), 0) },
-    { label: "Cards", items: accounts.cards, total: fmt(total(accounts.cards, (x) => x.due), 0) + " due" },
+    { label: "Cards", items: accounts.cards, total: fmt(total(accounts.cards, (x) => x.balance), 0) + " owed" },
   ].filter((g) => g.items.length);
   const all = groups.reduce((n, g) => n + g.items.length, 0);
 

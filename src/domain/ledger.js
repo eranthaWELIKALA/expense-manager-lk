@@ -119,7 +119,9 @@ function computeLines(d, key) {
     (d.cards || []).forEach((c) => {
       const tot = cardTotal(d, prevM(key), c.id);
       if (Math.abs(tot) < 0.005 || !c.bank) return;
-      push({ key: "b:" + c.id, label: c.name + " bill", kind: "bank", id: c.bank, flow: "out", plan: tot, origin: "bill", tag: mShort(prevM(key)), locked: true });
+      const day = N(c.dueDay) >= 1 ? Math.min(31, Math.round(N(c.dueDay))) : null;
+      push({ key: "b:" + c.id, label: c.name + " bill", kind: "bank", id: c.bank, flow: "out", plan: tot, origin: "bill",
+        tag: joinTags(mShort(prevM(key)), day ? "due " + ordinal(day) : null), locked: true, day, ...(day ? { date: dateInMonth(key, day) } : {}) });
     });
   }
 
@@ -178,14 +180,30 @@ function computeLines(d, key) {
   return out;
 }
 
-/** What a card owes for a month: its charges less anything paid onto it that month (never below zero). */
-export function cardTotal(d, key, cardId) {
-  if (!d.months[key]) return 0;
+/**
+ * One card's month: its charges, what was paid onto it, and what it bills next month (`due`).
+ * A card billed to a bank has its last bill on that bank's side. A card with no bank keeps last
+ * month's bill on the card itself (`prevDue`): payments onto it settle that first, the rest is paid ahead.
+ */
+const CM = new WeakMap();
+function cardMonth(d, key, cardId, depth = 0) {
+  if (!d.months[key]) return { charged: 0, paidIn: 0, prevDue: 0, toPrevBill: 0, due: 0 };
+  let m = CM.get(d); if (!m) { m = new Map(); CM.set(d, m); }
+  const mk = key + "|" + cardId;
+  if (m.has(mk)) return m.get(mk);
+  const card = (d.cards || []).find((c) => c.id === cardId) || {};
   const ls = lines(d, key).filter((l) => l.kind === "card" && l.id === cardId);
   const charged = ls.filter((l) => l.flow !== "in").reduce((s, l) => s + val(l), 0);
-  const paid = ls.filter((l) => l.flow === "in").reduce((s, l) => s + val(l), 0);
-  return Math.max(0, charged - paid);
+  const paidIn = ls.filter((l) => l.flow === "in").reduce((s, l) => s + val(l), 0);
+  const prevDue = !card.bank && d.months[prevM(key)] && depth < MAX_CHAIN ? cardMonth(d, prevM(key), cardId, depth + 1).due : 0;
+  const toPrevBill = Math.min(paidIn, prevDue);
+  const r = { charged, paidIn, prevDue, toPrevBill, due: Math.max(0, charged - (paidIn - toPrevBill)) };
+  m.set(mk, r);
+  return r;
 }
+
+/** What a card bills for a month: its charges less anything paid ahead onto it (never below zero). */
+export const cardTotal = (d, key, cardId) => cardMonth(d, key, cardId).due;
 
 /* month results, memoised — openings chain backwards through the months you've opened */
 const MC = new WeakMap();
@@ -240,12 +258,22 @@ function doMonth(d, key, depth) {
     const charges = rows.filter((l) => l.flow !== "in");
     const charged = charges.reduce((s, l) => s + val(l), 0);
     const paid = rows.filter((l) => l.flow === "in").reduce((s, l) => s + val(l), 0); // paid ahead this month
+    // owed right now: last month's bill until it's paid, plus this month's charges so far, less anything paid onto the card
+    const cm = cardMonth(d, key, c.id, depth);
+    const line = ls.find((l) => l.key === "b:" + c.id); // on the bank's side
+    const dueDate = N(c.dueDay) >= 1 ? dateInMonth(key, Math.min(31, Math.round(N(c.dueDay)))) : null;
+    const bill = line ? { amount: val(line), left: line.done ? 0 : N(line.remaining), date: line.date || null, done: !!line.done }
+      : cm.prevDue > 0.005 ? { amount: cm.prevDue, left: cm.prevDue - cm.toPrevBill, date: dueDate, done: cm.prevDue - cm.toPrevBill < 0.005 } : null;
+    const billLeft = bill ? bill.left : 0;
+    const moved = rows.reduce((s, l) => s + (l.maybe ? 0 : l.flow === "in" ? -settled(l) : settled(l)), 0);
+    const balance = Math.max(0, billLeft + moved + cm.toPrevBill); // payments that settled the card's own bill are already off billLeft
     return {
-      o: c, rows,
+      o: c, rows, bill,
+      balance, available: N(c.limit) > 0 ? N(c.limit) - balance : null,
       plan: charges.reduce((s, l) => s + N(l.plan), 0),
       actual: charges.reduce((s, l) => s + (l.actual !== null && l.actual !== undefined ? N(l.actual) : 0), 0),
-      charged, paid,
-      due: Math.max(0, charged - paid), // what it bills next month
+      charged, paid: paid - cm.toPrevBill, // paid ahead
+      due: cm.due, // what it bills next month
     };
   });
 

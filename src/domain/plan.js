@@ -5,7 +5,8 @@
    @typedef {{id:string, name:string, active?:boolean, variable?:boolean, splits:{bank:string, amount:number}[], past?:object[]}} Income
               (variable: the amount differs each month — `splits` is the estimate; past: see versions.js)
    @typedef {{id:string, name:string, from:string, amount:number}} Wallet
-   @typedef {{id:string, name:string, bank:string, note?:string}} Card
+   @typedef {{id:string, name:string, bank:string, note?:string, limit?:number, dueDay?:number}} Card
+              (limit: credit limit; dueDay: day of the month the bill must be paid by)
    @typedef {{id:string, name:string, amount:number, via:Via, flow:"out"|"in"|"move", to?:string, active?:boolean, budget?:boolean,
               startMonth?:string, day?:number, past?:object[]}} Template
    @typedef {{id:string, name:string, mode:"term"|"open", total:number, months?:number, monthly?:number,
@@ -20,7 +21,7 @@
 */
 
 import { uid } from "./ids";
-import { blankMonth, lines } from "./ledger";
+import { blankMonth, computeMonth, lines } from "./ledger";
 import { currentMonthKey, isDateISO, isMonthKey, mDiff, nextM } from "./months";
 import { normalizeLog } from "./history";
 import { canApplyToOneMonth, pastBefore, versionedChanges } from "./versions";
@@ -315,6 +316,13 @@ export function addTransfer(d, mk, { from, to, amount, date, note }) {
 export function payCard(d, mk, { cardId, bankId, amount, date }) {
   const bill = lines(d, mk).find((l) => l.key === "b:" + cardId);
   let plan = d, toBill = 0;
+  if (!bill) { // no bank to bill: the card carries its own bill, and the payment settles that first
+    const own = (computeMonth(d, mk).cards.find((c) => c.o.id === cardId) || {}).bill;
+    toBill = own ? Math.min(amount, own.left) : 0;
+    plan = addTransfer(plan, mk, { from: { kind: "bank", id: bankId }, to: { kind: "card", id: cardId }, amount, date });
+    const ahead = Math.round((amount - toBill) * 100) / 100;
+    return { plan, toBill, ahead: ahead > 0.005 ? ahead : 0 };
+  }
   if (bill && !bill.done) {
     toBill = Math.min(amount, bill.remaining > 0.005 ? bill.remaining : 0);
     if (toBill > 0.005) plan = recordPayment(plan, mk, bill.key, { amount: toBill, via: { kind: "bank", id: bankId }, date });
