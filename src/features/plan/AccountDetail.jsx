@@ -57,6 +57,7 @@ export function AccountDetail({ account, openRows, actions, openOnly, onOpenOnly
         <Stat key="i" label="In" value={fmt(a.inSum, 0)} tone="pos" />,
         <Stat key="u" label="Out" value={fmt(a.outSum, 0)} />,
         <Stat key="c" label={a.short ? "Closing · short" : "Closing"} value={fmt(a.closing, 0)} tone={a.short ? "neg" : undefined} />,
+        <Stat key="a" label="Actual balance" value={fmt(a.actual, 0)} tone={a.actual < -0.005 ? "neg" : undefined} />,
       ];
     const base = Math.abs(a.opening || 0) || 1;
     body = (

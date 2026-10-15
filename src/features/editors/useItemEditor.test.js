@@ -37,3 +37,15 @@ describe("pastMonthsAffected", () => {
     expect(pastMonthsAffected(plan, "banks", b, { ...b, note: "x" })).toEqual([]);
   });
 });
+
+import { installmentDefaults, installmentFromForm } from "./itemModals";
+
+describe("installment type in the form", () => {
+  it("stores loan / lease and leaves installments untyped", () => {
+    const plan = { start: "2026-08", banks: [{ id: "b1" }], wallets: [], cards: [] };
+    const base = { ...installmentDefaults(plan, "2026-08"), name: "Home", total: "1200", months: "12" };
+    expect(installmentFromForm({ ...base, itype: "loan" }).type).toBe("loan");
+    expect(installmentFromForm({ ...base, itype: "installment" }, { id: "i1", type: "loan" })).not.toHaveProperty("type");
+    expect(installmentDefaults(plan, "2026-08", { type: "lease" }).itype).toBe("lease");
+  });
+});

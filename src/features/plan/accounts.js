@@ -20,7 +20,7 @@ export function monthAccounts(plan, month) {
       key: kind + ":" + L.o.id, kind, o: L.o, name: L.o.name, rows: L.rows,
       logo: accountLogo(plan, kind, L.o),
       note: kind === "cash" ? "Withdrawn from " + (bankName(L.o.from) || "—") : L.o.note || "",
-      opening: L.opening, closing: L.closing, inSum: sum("in"), outSum: sum("out"),
+      opening: L.opening, closing: L.closing, actual: L.actual, inSum: sum("in"), outSum: sum("out"),
       balance: L.closing, short: L.closing < -0.005, open: L.rows.filter(isOpen).length,
     };
   };

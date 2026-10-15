@@ -1,6 +1,19 @@
 import { mDiff } from "./months";
 import { N } from "./format";
 
+/** What an installment item is — the maths is the same, only the wording differs. Absent = "installment". */
+export const INSTALLMENT_TYPES = [
+  { value: "installment", label: "Installment", plural: "Installments", noun: "installment", total: "Total price" },
+  { value: "loan", label: "Loan", plural: "Loans", noun: "loan", total: "Total to repay" },
+  { value: "lease", label: "Leasing", plural: "Leasing", noun: "lease", total: "Total to repay" },
+];
+
+/** The type entry for an installment item (or a type value). */
+export const instType = (it) => {
+  const v = typeof it === "string" ? it : it && it.type;
+  return INSTALLMENT_TYPES.find((t) => t.value === v) || INSTALLMENT_TYPES[0];
+};
+
 /**
  * The installment slice due in a given month, or null when not running.
  * "term" splits the total evenly; "open" pays a fixed monthly amount until the total is reached.

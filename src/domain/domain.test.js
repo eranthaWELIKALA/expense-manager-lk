@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   nextM, prevM, mDiff, isMonthKey, fmt, fmtK, parseAmount,
-  instFor, instPaid, computeMonth, blankMonth,
+  instFor, instPaid, instType, computeMonth, blankMonth,
   blankPlan, samplePlan, normalizePlan, setOverride, removeLine, addOneOff, openMonth, rollInto,
 } from "./index";
 
@@ -439,5 +439,29 @@ describe("installments started before the plan", () => {
     const d = plan();
     d.installments = [{ id: "i9", name: "Old", mode: "term", total: 600, months: 6, startMonth: "2025-06", via: { kind: "bank", id: "b1" } }];
     expect(computeMonth(d, "2026-08").ls.some((l) => l.key === "i:i9")).toBe(false);
+  });
+});
+
+describe("loans and leasing", () => {
+  it("work like installments, labelled by type", () => {
+    const d = plan();
+    d.installments = [{ id: "i9", name: "Car", type: "lease", mode: "term", total: 1200, months: 12, startMonth: "2026-08", via: { kind: "bank", id: "b1" } }];
+    const line = computeMonth(d, "2026-08").ls.find((l) => l.key === "i:i9");
+    expect(line).toMatchObject({ plan: 100, tag: "lease 1/12" });
+    expect(instType(d.installments[0]).label).toBe("Leasing");
+    expect(instType({}).value).toBe("installment"); // no type = an installment
+  });
+});
+
+describe("actual balance", () => {
+  it("counts only money that has really come in or gone out", () => {
+    const now = currentMonthKey();
+    const d = plan();
+    d.templates = [...d.templates, { id: "t9", name: "Cricket", amount: 6000, via: { kind: "bank", id: "b1" }, flow: "out", budget: true }];
+    d.months = { [now]: blankMonth() };
+    const before = computeMonth(d, now).banks[0];
+    const after = computeMonth(recordPayment(d, now, "t:t9", { amount: 500, via: { kind: "bank", id: "b1" }, date: now + "-05" }), now).banks[0];
+    expect(after.closing).toBe(before.closing); // the plan still sets the whole budget aside
+    expect(after.actual).toBe(before.actual - 500); // but only 500 has really gone
   });
 });

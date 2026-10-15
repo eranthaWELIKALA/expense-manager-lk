@@ -9,8 +9,8 @@
    @typedef {{id:string, name:string, amount:number, via:Via, flow:"out"|"in"|"move", to?:string, active?:boolean, budget?:boolean,
               startMonth?:string, day?:number, past?:object[]}} Template
    @typedef {{id:string, name:string, mode:"term"|"open", total:number, months?:number, monthly?:number,
-              prepaid?:number, startMonth:string, via:Via, auto?:boolean}} Installment
-              (auto: deducted automatically — counts as paid once its due day passes)
+              prepaid?:number, startMonth:string, via:Via, auto?:boolean, type?:"loan"|"lease"}} Installment
+              (auto: deducted automatically — counts as paid once its due day passes; type: absent = an installment)
    @typedef {{ov:Object<string,{plan?:number, actual?:number|null, done?:boolean, removed?:boolean, via?:Via}>,
               extra:{id:string, name:string, amount:number, kind:string, id2:string, flow?:string}[],
               adjust:Object<string,number>}} MonthState

@@ -1,7 +1,7 @@
 import React from "react";
 import { Button, Field, FormModal, RemoveButton, Select } from "../../components/ui";
 import { useForm } from "../../hooks/useForm";
-import { N, dateInMonth, dayOfDate, defaultDateIn, firstMonth, fmt, mShort, monthOfDate, numOr, ordinal, uid } from "../../domain";
+import { N, dateInMonth, dayOfDate, defaultDateIn, firstMonth, fmt, instType, mShort, monthOfDate, numOr, ordinal, uid } from "../../domain";
 import { validateAmount, validateDate, validateName } from "../../lib/validation";
 import { bankInfo, cardLogoIds, networkInfo } from "../../lib/banks";
 import {
@@ -173,9 +173,12 @@ export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDele
   );
 }
 
-/* ---------------- installment ---------------- */
+/* ---------------- installment / loan / lease ---------------- */
+export const INST_PLACEHOLDER = { installment: "e.g. Laptop", loan: "e.g. Housing loan", lease: "e.g. Car lease" };
+
 export const installmentDefaults = (plan, startMonth, item) => ({
   name: str(item?.name),
+  itype: item?.type || "installment",
   mode: item?.mode || "term",
   total: str(item?.total ?? ""),
   months: str(item?.months ?? 12),
@@ -201,16 +204,18 @@ export const installmentFromForm = (v, item) => {
   if (v.mode === "term") { base.months = Math.round(numOr(v.months, 1)); delete base.monthly; delete base.prepaid; }
   else { base.monthly = numOr(v.monthly); base.prepaid = numOr(v.prepaid); delete base.months; }
   if (v.auto === "auto") base.auto = true; else delete base.auto;
+  if (v.itype && v.itype !== "installment") base.type = v.itype; else delete base.type;
   return base;
 };
 
 export function InstallmentModal({ plan, item, startMonth, onSave, onClose, onDelete }) {
   const form = useForm(installmentDefaults(plan, startMonth, item), (v) => validateInstallment(v, plan));
   const save = form.guard((v) => onSave(installmentFromForm(v, item)));
+  const type = instType(form.values.itype);
   return (
-    <FormModal title={titleFor(item, "installment")} description="Set it once. It's added to each month automatically and drops off when paid."
-      submitLabel={item ? "Save" : "Add installment"} onSubmit={save} onClose={onClose} onDelete={onDelete}>
-      <NameField form={form} placeholder="e.g. Laptop" />
+    <FormModal title={titleFor(item, type.noun)} description="Set it once. It's added to each month automatically and drops off when paid."
+      submitLabel={item ? "Save" : "Add " + type.noun} onSubmit={save} onClose={onClose} onDelete={onDelete}>
+      <NameField form={form} placeholder={INST_PLACEHOLDER[type.value]} />
       <PaymentMethodField plan={plan} form={form} />
       <InstallmentFields form={form} planStart={firstMonth(plan)} />
     </FormModal>
@@ -236,7 +241,7 @@ export const describe = {
     amount: (t.budget ? "≤ " : "") + fmt(t.amount),
   }),
   installments: (plan, it, viaLabel) => ({
-    sub: viaLabel(plan, it.via) + " · " + (it.mode === "term" ? it.months + " months" : fmt(it.monthly) + " / month") + " from " + mShort(it.startMonth) + (it.day ? " · due " + ordinal(it.day) : "") + (it.auto ? " · auto-debit" : ""),
+    sub: (it.type ? instType(it).label + " · " : "") + viaLabel(plan, it.via) + " · " + (it.mode === "term" ? it.months + " months" : fmt(it.monthly) + " / month") + " from " + mShort(it.startMonth) + (it.day ? " · due " + ordinal(it.day) : "") + (it.auto ? " · auto-debit" : ""),
     amount: fmt(it.total),
   }),
 };

@@ -3,7 +3,7 @@ import { useConfirm } from "../../contexts/ConfirmContext";
 import { useProfile } from "../../contexts/ProfileContext";
 import { useToast } from "../../contexts/ToastContext";
 import {
-  addItem, applyItemChange, canApplyToOneMonth, currentMonthKey, lines, mLabel, mShort, pinPaidHistory, removeItem, replaceItem, usageOf, versionedChanges,
+  addItem, applyItemChange, canApplyToOneMonth, currentMonthKey, instType, lines, mLabel, mShort, pinPaidHistory, removeItem, replaceItem, usageOf, versionedChanges,
 } from "../../domain";
 import { ScopeDialog } from "./ScopeDialog";
 import { BankModal, CardModal, IncomeModal, InstallmentModal, RecurringModal, WalletModal } from "./itemModals";
@@ -17,6 +17,9 @@ export const COLLECTIONS = {
   templates: { noun: "monthly item", Modal: RecurringModal },
   installments: { noun: "installment", Modal: InstallmentModal },
 };
+
+/** What to call one item — an installment can be a loan or a lease. */
+const nounOf = (coll, item) => (coll === "installments" ? instType(item).noun : COLLECTIONS[coll].noun);
 
 /* Ledger line keys each collection produces (see domain/ledger.js). */
 const LINE_PREFIX = { incomes: "s:", wallets: "w:", cards: "b:", templates: "t:", installments: "i:" };
@@ -66,7 +69,7 @@ export function useItemEditor({ startMonth = currentMonthKey() } = {}) {
 
   const askDelete = useCallback(async (coll, item) => {
     if (!canEdit) return false;
-    const { noun } = COLLECTIONS[coll];
+    const noun = nounOf(coll, item);
     const uses = usageOf(plan, coll, item.id);
     const ok = await confirm({
       danger: true,
@@ -83,7 +86,7 @@ export function useItemEditor({ startMonth = currentMonthKey() } = {}) {
   }, [canEdit, plan, confirm, update, toast]);
 
   const save = (coll, existing) => async (item) => {
-    const { noun } = COLLECTIONS[coll];
+    const noun = nounOf(coll, item);
     if (existing && SCOPED.has(coll) && versionedChanges(coll, existing, item).length) {
       const scope = await askScope({
         name: item.name, monthKey: startMonth,

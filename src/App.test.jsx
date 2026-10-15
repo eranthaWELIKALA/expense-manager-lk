@@ -149,7 +149,7 @@ describe("App", () => {
 
     // commitments: edit an installment in a modal
     await user.click(screen.getByRole("link", { name: "Commitments" }));
-    expect(await screen.findByRole("button", { name: "+ Add installment" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "+ Add" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Edit Phone" }));
     dlg = await screen.findByRole("dialog", { name: "Edit installment" });
     const nm = within(dlg).getByLabelText("Name");

@@ -13,7 +13,7 @@
 
 import { prevM, mShort, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, dateInMonth, todayISO, currentMonthKey } from "./months";
 import { N, fmt } from "./format";
-import { instFor } from "./installments";
+import { instFor, instType } from "./installments";
 import { versionAt } from "./versions";
 
 export const blankMonth = () => ({ ov: {}, extra: [], transfers: [], adjust: {} });
@@ -150,7 +150,7 @@ function computeLines(d, key) {
   (d.installments || []).forEach((it) => {
     const s = instFor(it, key);
     if (!s) return;
-    const tag = (s.of ? s.n + "/" + s.of : "#" + s.n) + (it.day ? " · due " + ordinal(it.day) : "") + (it.auto ? " · auto" : "");
+    const tag = (it.type ? instType(it).noun + " " : "") + (s.of ? s.n + "/" + s.of : "#" + s.n) + (it.day ? " · due " + ordinal(it.day) : "") + (it.auto ? " · auto" : "");
     push({ key: "i:" + it.id, label: it.name, kind: it.via.kind, id: it.via.id, flow: "out", plan: s.amount,
       origin: "installment", tag, locked: true, day: it.day || null,
       autoPaid: !!it.auto && dateInMonth(key, it.day) <= todayISO() }); // auto-debited once the due day passes
@@ -214,6 +214,8 @@ function openingFor(d, key, kind, id, depth) {
 }
 
 const ORIGIN_ORDER = { salary: 0, move: 1, bill: 2, recurring: 3, installment: 3, part: 3, oneoff: 4, withdrawal: 5 };
+/** What has really moved on a line so far: a ticked line in full, or the parts already paid. */
+const settled = (l) => (l.done ? val(l) : l.portions ? N(l.actual) : 0);
 const isSpend = (l) => l.flow === "out" && !["bill", "withdrawal", "move", "transfer"].includes(l.origin);
 
 function doMonth(d, key, depth) {
@@ -221,10 +223,13 @@ function doMonth(d, key, depth) {
   const build = (kind, o) => {
     let bal = openingFor(d, key, kind, o.id, depth);
     const opening = bal;
+    const order = (l) => (kind === "cash" && l.flow === "in" ? -1 : ORIGIN_ORDER[l.origin] ?? 3); // a cash pot is filled before it's spent
     const rows = ls.filter((l) => l.kind === kind && l.id === o.id)
-      .slice().sort((a, b) => (ORIGIN_ORDER[a.origin] ?? 3) - (ORIGIN_ORDER[b.origin] ?? 3) || (a.day || 0) - (b.day || 0))
+      .slice().sort((a, b) => order(a) - order(b) || (a.day || 0) - (b.day || 0))
       .map((l) => { const a = val(l); bal += l.flow === "in" ? a : -a; return { ...l, amt: a, bal }; });
-    return { o, opening, rows, closing: bal };
+    // what's really there now: only money that has actually come in or gone out
+    const actual = rows.filter((l) => !l.maybe).reduce((s, l) => s + (l.flow === "in" ? settled(l) : -settled(l)), opening);
+    return { o, opening, rows, closing: bal, actual };
   };
 
   const banks = (d.banks || []).map((b) => build("bank", b));

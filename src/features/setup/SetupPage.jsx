@@ -12,7 +12,7 @@ const SECTIONS = [
   { coll: "wallets", title: "Cash", tone: "brass", description: "Money you withdraw and spend by hand. Leftover cash carries into next month." },
   { coll: "cards", title: "Cards", tone: "violet", description: "Charges build up all month, then the total debits the bank you choose, next month." },
   { coll: "templates", title: "Every month", tone: "ink", description: 'Recurring bills and transfers, grouped by how they\'re paid. "Move" shifts money between your own banks instead of spending it.' },
-  { coll: "installments", title: "Installments", tone: "flag", description: "Set it once. The monthly amount is worked out for you, and it drops off when it's paid." },
+  { coll: "installments", title: "Installments & loans", tone: "flag", description: "Installments, loans and leasing. Set it once. The monthly amount is worked out for you, and it drops off when it's paid." },
 ];
 
 /** Setup: one category at a time, picked from the list on the left. */

@@ -2,11 +2,11 @@ import React from "react";
 import { Combobox, Field, FormModal, RemoveButton, Segmented } from "../../components/ui";
 import { useForm } from "../../hooks/useForm";
 import {
-  dayMonthLabel, dayOfDate, defaultDateIn, firstMonth, fmt, isDateISO, isPayable, lines, mLabel, monthOfDate, numOr, todayISO, uid, viaLabel,
+  dayMonthLabel, dayOfDate, defaultDateIn, firstMonth, fmt, instType, isDateISO, isPayable, lines, mLabel, monthOfDate, numOr, todayISO, uid, viaLabel,
 } from "../../domain";
 import { validateAmount, validateDate, validateName } from "../../lib/validation";
 import { DateField, InstallmentFields, MoneyField, NameField, PaidHowField, PaymentMethodField, TextField, decodeVia, defaultVia, maxDate, minDateFor } from "./fields";
-import { installmentDefaults, installmentFromForm, validateInstallment } from "./itemModals";
+import { INST_PLACEHOLDER, installmentDefaults, installmentFromForm, validateInstallment } from "./itemModals";
 
 /** Payments due in the month of `date` that can be recorded as paid. */
 const payableIn = (plan, date) => (isDateISO(date) ? lines(plan, monthOfDate(date)).filter(isPayable) : []);
@@ -164,7 +164,7 @@ export function RecordPaymentModal({ plan, monthKey, fixedLine, onSave, onRemove
 
 const TYPES = [
   { value: "monthly", label: "Every month", hint: "Recurring bill" },
-  { value: "installment", label: "Installment", hint: "Split over months" },
+  { value: "installment", label: "Installment / loan", hint: "Paid off monthly" },
   { value: "maybe", label: "What if…", hint: "See if it fits a month" },
 ];
 
@@ -214,9 +214,9 @@ export function NewExpenseModal({ plan, monthKey, initialType = "monthly", onSav
 
   return (
     <FormModal title="New expense" description={describeStart(v)} onSubmit={save} onClose={onClose}
-      submitLabel={v.type === "installment" ? "Add installment" : v.type === "maybe" ? "Try it" : "Add expense"}>
+      submitLabel={v.type === "installment" ? "Add " + instType(v.itype).noun : v.type === "maybe" ? "Try it" : "Add expense"}>
       <Segmented label="Expense type" options={TYPES} value={v.type} onChange={(t) => form.set("type", t)} />
-      <NameField form={form} label="What for" placeholder={v.type === "installment" ? "e.g. Laptop" : v.type === "maybe" ? "e.g. New phone" : v.budget === "budget" ? "e.g. Cricket" : "e.g. Electricity"} />
+      <NameField form={form} label="What for" placeholder={v.type === "installment" ? INST_PLACEHOLDER[instType(v.itype).value] : v.type === "maybe" ? "e.g. New phone" : v.budget === "budget" ? "e.g. Cricket" : "e.g. Electricity"} />
       <div className="form-grid">
         <PaymentMethodField plan={plan} form={form} label="Pay with" />
         {v.type === "monthly" && <MoneyField form={form} label={v.budget === "budget" ? "Budget each month" : "Amount each month"} />}

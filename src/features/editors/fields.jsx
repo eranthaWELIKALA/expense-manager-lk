@@ -1,6 +1,6 @@
 import React from "react";
 import { Field, Select, TextInput } from "../../components/ui";
-import { fmt, isDateISO, mDiff, mLabel, mShort, monthOfDate, numOr, todayISO } from "../../domain";
+import { INSTALLMENT_TYPES, fmt, instType, isDateISO, mDiff, mLabel, mShort, monthOfDate, numOr, todayISO } from "../../domain";
 import { BANKS, NETWORKS, NO_LOGO, bankInfo, guessBank, guessNetwork, networkInfo } from "../../lib/banks";
 
 /* Form fields shared by every add/edit modal. Values are strings while editing. */
@@ -137,7 +137,7 @@ function startedBefore(v, planStart) {
 }
 
 /**
- * Installment terms: fixed number of months, or a monthly amount until the total is paid.
+ * Installment / loan / lease terms: type, then fixed number of months, or a monthly amount until the total is paid.
  * The first payment can be before `planStart` (the plan's first month) — earlier months are skipped.
  */
 export function InstallmentFields({ form, planStart }) {
@@ -146,16 +146,22 @@ export function InstallmentFields({ form, planStart }) {
   const preview = v.mode === "term"
     ? numOr(v.months) >= 1 && total > 0 && `${fmt(total / Math.round(numOr(v.months)))} a month for ${Math.round(numOr(v.months))} months`
     : numOr(v.monthly) > 0 && total > prepaid && `${fmt(numOr(v.monthly))} a month for about ${Math.ceil((total - prepaid) / numOr(v.monthly))} months`;
+  const type = instType(v.itype);
   return (
     <>
       <div className="form-grid">
+        <Field label="Type" hint={type.value === "installment" ? "Something bought and paid off monthly." : "Use the monthly rental and what you repay in total, interest included."}>
+          <Select value={type.value} onChange={form.set("itype")}>
+            {INSTALLMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </Select>
+        </Field>
         <Field label="Runs">
           <Select value={v.mode} onChange={form.set("mode")}>
             <option value="term">Fixed number of months</option>
             <option value="open">Fixed amount until paid</option>
           </Select>
         </Field>
-        <MoneyField form={form} name="total" label="Total price" />
+        <MoneyField form={form} name="total" label={type.total} />
         {v.mode === "term"
           ? <MoneyField form={form} name="months" label="Months" />
           : <MoneyField form={form} name="monthly" label="Pay each month" />}

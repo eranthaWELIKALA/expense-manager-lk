@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { AccountLogo, Badge, Button, EmptyState, StatCard, cx } from "../../components/ui";
 import { useProfile } from "../../contexts/ProfileContext";
 import { useViewMonth } from "../../hooks/useViewMonth";
-import { N, fmt, fmtK, instFor, instPaid, mDiff, mLabel, mShort, nextM, ordinal, viaLabel } from "../../domain";
+import { INSTALLMENT_TYPES, N, fmt, fmtK, instFor, instPaid, instType, mDiff, mLabel, mShort, nextM, ordinal, viaLabel } from "../../domain";
 import { viaLogo } from "../../lib/banks";
 import { useItemEditor } from "../editors/useItemEditor";
 
@@ -35,6 +35,7 @@ function Row({ plan, item, mk, editor, running }) {
       <div className="inst-main">
         <div className="inst-t">
           <b>{item.name}</b>
+          {item.type && <Badge>{instType(item).label}</Badge>}
           {running
             ? <Badge tone="brass">{slice.of ? slice.n + " of " + slice.of : "month " + slice.n}</Badge>
             : <Badge tone={started ? "jade" : "grey"}>{started ? "paid off" : "starts " + mShort(item.startMonth)}</Badge>}
@@ -63,10 +64,14 @@ export default function CommitmentsPage() {
   const [mk] = useViewMonth();
   const editor = useItemEditor({ startMonth: mk });
   const [tab, setTab] = useState("running");
+  const [type, setType] = useState("all");
 
+  // only offer the type filter once there's more than one kind
+  const types = INSTALLMENT_TYPES.filter((t) => plan.installments.some((it) => instType(it).value === t.value));
+  const shown = type === "all" || types.length < 2 ? plan.installments : plan.installments.filter((it) => instType(it).value === type);
   const byEnd = (a, b) => monthsLeft(a, mk) - monthsLeft(b, mk);
-  const running = plan.installments.filter((it) => instFor(it, mk)).sort(byEnd);
-  const idle = plan.installments.filter((it) => !instFor(it, mk)).sort((a, b) => (a.startMonth < b.startMonth ? 1 : -1));
+  const running = shown.filter((it) => instFor(it, mk)).sort(byEnd);
+  const idle = shown.filter((it) => !instFor(it, mk)).sort((a, b) => (a.startMonth < b.startMonth ? 1 : -1));
   const monthlyTotal = running.reduce((s, it) => s + instFor(it, mk).amount, 0);
   const owed = running.reduce((s, it) => s + Math.max(0, N(it.total) - instPaid(it, mk)), 0) + monthlyTotal;
   const next = running[0];
@@ -76,14 +81,14 @@ export default function CommitmentsPage() {
     <>
       <div className="page-head2">
         <div>
-          <h2>Installments</h2>
-          <p>Leases, loans and card plans, and how far along each one is. Viewing {mLabel(mk)}.</p>
+          <h2>Installments &amp; loans</h2>
+          <p>Installments, loans and leasing, and how far along each one is. Viewing {mLabel(mk)}.</p>
         </div>
-        {editor.canEdit && <Button variant="primary" onClick={() => editor.openAdd("installments")}>+ Add installment</Button>}
+        {editor.canEdit && <Button variant="primary" onClick={() => editor.openAdd("installments")}>+ Add</Button>}
       </div>
 
       <div className="stats">
-        <StatCard highlight label="Due this month" value={fmt(monthlyTotal, 0)} sub={`${running.length} installment${running.length === 1 ? "" : "s"} running`} />
+        <StatCard highlight label="Due this month" value={fmt(monthlyTotal, 0)} sub={`${running.length} running`} />
         <StatCard label="Still owed" value={fmt(owed, 0)} sub="across everything running, this month included" />
         <StatCard label="Next to finish" value={next ? next.name : "—"} subTone="pos"
           sub={next ? (monthsLeft(next, mk) ? `Last payment in ${mLabel(addMonths(mk, monthsLeft(next, mk)))}` : "Last payment this month") + ` · frees ${fmt(instFor(next, mk).amount, 0)} / month` : "Nothing running"} />
@@ -94,10 +99,17 @@ export default function CommitmentsPage() {
           <button type="button" aria-pressed={tab === "running"} className={cx(tab === "running" && "on")} onClick={() => setTab("running")}>Running <span className="ct">{running.length}</span></button>
           <button type="button" aria-pressed={tab === "idle"} className={cx(tab === "idle" && "on")} onClick={() => setTab("idle")}>Upcoming &amp; paid off <span className="ct">{idle.length}</span></button>
         </div>
+        {types.length > 1 && (
+          <div className="mseg" role="group" aria-label="Type">
+            {[{ value: "all", plural: "All" }, ...types].map((t) => (
+              <button key={t.value} type="button" aria-pressed={type === t.value} className={cx(type === t.value && "on")} onClick={() => setType(t.value)}>{t.plural}</button>
+            ))}
+          </div>
+        )}
         {tab === "running" && running.length > 1 && <span className="mut">Sorted by what finishes first</span>}
       </div>
 
-      <section className="insts" aria-label={tab === "running" ? "Running installments" : "Upcoming and paid-off installments"}>
+      <section className="insts" aria-label={tab === "running" ? "Running" : "Upcoming and paid off"}>
         {items.length === 0 && <EmptyState>{tab === "running" ? `Nothing running in ${mLabel(mk)}.` : "Nothing upcoming or paid off."}</EmptyState>}
         {items.map((it) => <Row key={it.id} plan={plan} item={it} mk={mk} editor={editor} running={tab === "running"} />)}
       </section>

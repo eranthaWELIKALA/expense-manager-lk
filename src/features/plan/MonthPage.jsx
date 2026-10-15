@@ -8,7 +8,7 @@ import { useViewMonth } from "../../hooks/useViewMonth";
 import {
   computeMonth, fmt, fmtK, mLabel, mShort, nextM, monthRail,
   N, isDateISO, isPayable, monthOfDate, setOverride, markPaid, recordPayment, removePayment, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, monthsToOpen, dayMonthLabel,
-  addTransfer, payCard, makeReal, withoutMaybes, viaLabel, firstMonth,
+  addTransfer, payCard, makeReal, withoutMaybes, viaLabel, firstMonth, instType,
 } from "../../domain";
 import { NewExpenseModal, RecordPaymentModal } from "../editors/ExpenseModal";
 import { TransferModal } from "../editors/TransferModal";
@@ -157,8 +157,9 @@ export default function MonthPage() {
       update((d) => addItem(d, "templates", item), { label: `Added monthly item “${item.name}”` });
       toast.success(`“${item.name}” added to every month from ${mLabel(item.startMonth)}.`);
     } else {
-      update((d) => addItem(d, "installments", item), { label: `Added installment “${item.name}”` });
-      toast.success(`Installment “${item.name}” added from ${mLabel(item.startMonth)}.` + (item.startMonth < firstMonth(plan) ? ` Payments before ${mLabel(firstMonth(plan))} count as already paid.` : ""));
+      const type = instType(item);
+      update((d) => addItem(d, "installments", item), { label: `Added ${type.noun} “${item.name}”` });
+      toast.success(`${type.noun[0].toUpperCase() + type.noun.slice(1)} “${item.name}” added from ${mLabel(item.startMonth)}.` + (item.startMonth < firstMonth(plan) ? ` Payments before ${mLabel(firstMonth(plan))} count as already paid.` : ""));
     }
     setAdding(null);
   };
