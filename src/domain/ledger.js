@@ -249,32 +249,19 @@ function cardCycle(d, M, cardId, depth = 0) {
 /** What a card's statement cycle bills: its charges less anything paid ahead onto it (never below zero). */
 export const cardTotal = (d, M, cardId) => cardCycle(d, M, cardId).due;
 
-/** When the statement a card line lands on is issued (no statement day: the start of the next month). */
-const statementOf = (c, key, l) => {
-  const S = stmtDay(c);
-  if (!S) return nextM(key) + "-01";
-  return dayOfLine(l) <= S ? dateInMonth(key, S) : dateInMonth(nextM(key), S);
-};
-
-/** A charge counts as owed once it's ticked (or part paid), or once the statement it's on has been issued. */
-const counted = (c, key, l) => l.done || l.portions || statementOf(c, key, l) <= todayISO();
-
 /**
- * The rest of every installment plan on a card that isn't owed yet — the bank holds it against the
- * limit from the start: later months' slices, plus this month's while it isn't counted.
+ * The rest of every installment plan on a card after this month — not charged yet, but the bank
+ * holds it against the limit from the start.
  */
 function cardInstallmentsAhead(d, key, c) {
-  const here = linesNoBills(d, key);
-  return (d.installments || []).filter((it) => it.via && it.via.kind === "card" && it.via.id === c.id).reduce((s, it) => {
-    const later = Math.max(0, N(it.total) - instPaid(it, key));
-    const line = here.find((l) => l.key === "i:" + it.id && l.kind === "card" && l.id === c.id);
-    return s + later + (line && !counted(c, key, line) ? val(line) : 0);
-  }, 0);
+  return (d.installments || []).filter((it) => it.via && it.via.kind === "card" && it.via.id === c.id)
+    .reduce((s, it) => s + Math.max(0, N(it.total) - instPaid(it, key)), 0);
 }
 
 /**
- * What a card really owes at the end of a month: carried over, plus charges made, less payments.
- * A charge counts once it's ticked, or once the statement it's on has been issued.
+ * What a card owes at the end of a month: carried over, plus the month's charges (the real amount
+ * once entered, otherwise the planned one), less payments onto it and bills paid from a bank.
+ * So it's never below an unpaid bill: the bill plus what's been charged since.
  */
 const CO = new WeakMap();
 function cardOwed(d, key, c, depth = 0) {
@@ -285,7 +272,7 @@ function cardOwed(d, key, c, depth = 0) {
   m.set(mk, 0);
   const before = depth < MAX_CHAIN ? cardOwed(d, prevM(key), c, depth + 1) : 0;
   const moved = linesNoBills(d, key).filter((l) => l.kind === "card" && l.id === c.id && !l.maybe)
-    .reduce((s, l) => s + (l.flow === "in" ? -settled(l) : counted(c, key, l) ? val(l) : settled(l)), 0);
+    .reduce((s, l) => s + (l.flow === "in" ? -settled(l) : val(l)), 0);
   const bill = lines(d, key).find((l) => l.key === "b:" + c.id); // paid on the bank's side
   const r = before + moved - (bill ? (bill.done ? val(bill) : bill.portions ? N(bill.paid) : 0) : 0);
   m.set(mk, r);

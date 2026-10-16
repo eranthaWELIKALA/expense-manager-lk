@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Field, FormModal, Segmented, Select } from "../../components/ui";
 import { useForm } from "../../hooks/useForm";
 import { defaultDateIn, firstMonth, fmt, isDateISO, mLabel, mShort, monthOfDate, numOr, computeMonth } from "../../domain";
@@ -30,6 +30,15 @@ function defaults(plan, kind) {
   }
 }
 
+/** What's outstanding on a card on a date: what's left of the bill due that month, otherwise what it owes. */
+export function cardOutstanding(plan, cardRef, date) {
+  const to = typeof cardRef === "string" ? ref(cardRef) : cardRef;
+  if (!to || to.kind !== "card" || !isDateISO(date) || !plan.months[monthOfDate(date)]) return 0;
+  const card = computeMonth(plan, monthOfDate(date)).cards.find((c) => c.o.id === to.id);
+  if (!card) return 0;
+  return card.bill && card.bill.left > 0.005 ? card.bill.left : Math.max(0, card.owed || 0);
+}
+
 /** What a card payment will do: the bill it settles first, the rest paid ahead. */
 function cardPreview(plan, v) {
   const to = ref(v.to), amount = numOr(v.amount);
@@ -52,10 +61,15 @@ function cardPreview(plan, v) {
  * or extra cash received. Settled as soon as it's saved.
  * onSave({kind, monthKey, from: {kind,id}|null, to: {kind,id}, amount, date, note})
  */
-export function TransferModal({ plan, monthKey, initialKind = "cash", onSave, onClose }) {
+export function TransferModal({ plan, monthKey, initialKind = "cash", initialTo, onSave, onClose }) {
   const minDate = minDateFor(firstMonth(plan));
+  const start = { ...defaults(plan, initialKind), ...(initialTo ? { to: initialTo } : {}) };
+  if (initialKind === "card" && initialTo) { // pay from the card's usual bank, when it has one
+    const c = plan.cards.find((x) => "card|" + x.id === initialTo);
+    if (c && c.bank) start.from = "bank|" + c.bank;
+  }
   const form = useForm(
-    { kind: initialKind, ...defaults(plan, initialKind), amount: "", date: defaultDateIn(monthKey), note: "" },
+    { kind: initialKind, ...start, amount: "", autoAmount: true, date: defaultDateIn(monthKey), note: "" },
     (v) => ({
       from: v.kind === "cashin" ? "" : !v.from ? "Choose where it comes from." : v.from === v.to ? "Pick two different accounts." : "",
       to: v.to ? "" : "Choose where it goes.",
@@ -64,6 +78,14 @@ export function TransferModal({ plan, monthKey, initialKind = "cash", onSave, on
     }),
   );
   const v = form.values;
+
+  // paying a card: fill in what's outstanding, until you type your own amount
+  const owing = v.kind === "card" ? cardOutstanding(plan, v.to, v.date) : 0;
+  useEffect(() => {
+    if (v.kind !== "card" || !v.autoAmount) return;
+    const next = owing > 0.005 ? owing.toFixed(2) : "";
+    if (next !== v.amount) form.setValues((vals) => ({ ...vals, amount: next }));
+  }, [v.kind, v.autoAmount, owing]); // eslint-disable-line react-hooks/exhaustive-deps
   const setKind = (k) => { form.set("kind", k); const d = defaults(plan, k); form.set("from", d.from); form.set("to", d.to); };
 
   const banks = options("bank", plan.banks), wallets = options("cash", plan.wallets), cards = options("card", plan.cards);
@@ -95,7 +117,8 @@ export function TransferModal({ plan, monthKey, initialKind = "cash", onSave, on
         {v.kind === "bank" && <>{pick("from", "From bank", banks)}{pick("to", "Into bank", banks)}</>}
         {v.kind === "card" && <>{pick("to", "Card", cards)}{pick("from", "Paid from bank", banks)}</>}
         {v.kind === "cashin" && <>{pick("to", "Into cash", wallets, { hint: "Cash you got from somewhere, or found you had more of." })}</>}
-        <MoneyField form={form} label="Amount" />
+        <MoneyField form={form} label="Amount" onChange={(a) => form.setValues((vals) => (a === vals.amount ? vals : { ...vals, amount: a, autoAmount: false }))}
+          hint={v.kind === "card" && owing > 0.005 ? (v.autoAmount ? `Outstanding: ${fmt(owing)}` : <>Outstanding {fmt(owing)} · <button type="button" className="linkish" onClick={() => form.set("autoAmount", true)}>use it</button></>) : undefined} />
         <DateField form={form} label="Date" min={minDate} />
       </div>
       {preview && <div className="preview">{preview}</div>}

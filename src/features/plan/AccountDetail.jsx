@@ -1,5 +1,5 @@
 import React from "react";
-import { AccountLogo, Badge, EmptyState, cx } from "../../components/ui";
+import { AccountLogo, Badge, Button, EmptyState, cx } from "../../components/ui";
 import { dayMonthLabel, fmt, ordinal, payDays, stmtDay, val } from "../../domain";
 import { LineHeader, LineRow } from "./LineRow";
 import { isOpen } from "./accounts";
@@ -15,7 +15,7 @@ const LOCKED_HINT = { bank: "Comes from elsewhere — change it at the source", 
  * Right column of the month view: one account's lines, or (account = null)
  * every open line across accounts. `openRows` = [{line, account}] for that view.
  */
-export function AccountDetail({ account, openRows, autoOpen = 0, hideAuto = false, onHideAuto, actions, openOnly, onOpenOnly, nextLabel }) {
+export function AccountDetail({ account, openRows, autoOpen = 0, hideAuto = false, onHideAuto, onPayCard, actions, openOnly, onOpenOnly, nextLabel }) {
   let head, stats, body;
   if (!account) {
     const toPay = openRows.filter((r) => r.line.flow === "out").reduce((s, r) => s + val(r.line), 0);
@@ -90,6 +90,9 @@ export function AccountDetail({ account, openRows, autoOpen = 0, hideAuto = fals
             <button type="button" aria-pressed={!hideAuto} className={cx(!hideAuto && "on")} onClick={() => onHideAuto(false)}>All</button>
             <button type="button" aria-pressed={hideAuto} className={cx(hideAuto && "on")} onClick={() => onHideAuto(true)}>Hide auto-debits</button>
           </div>
+        )}
+        {account && account.kind === "card" && onPayCard && (
+          <Button size="sm" variant="primary" onClick={() => onPayCard(account.o.id)}>Pay card</Button>
         )}
         {account && (
           <div className="mseg" role="group" aria-label="Show">

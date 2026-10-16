@@ -32,7 +32,7 @@ export default function MonthPage() {
   const { data: plan, update, canEdit } = useProfile();
   const [mk, setMonth] = useViewMonth();
   const [rolling, setRolling] = useState(false);
-  const [adding, setAdding] = useState(null); // "record" | "new" | "maybe" | "transfer"
+  const [adding, setAdding] = useState(null); // "record" | "new" | "maybe" | "transfer" | {payCard: id}
   const [hideMaybes, setHideMaybes] = useState(false); // compare balances without the what-ifs
   const [paying, setPaying] = useState(null); // line key
   const [modal, setModal] = useState(null); // Actions menu: "income" | "edit:<coll>"
@@ -291,7 +291,7 @@ export default function MonthPage() {
 
       <div className="mwork">
         <AccountList accounts={accounts} selected={current ? current.key : "open"} onSelect={setSelected} openCount={openRows.length} />
-        <AccountDetail account={current} openRows={tickRows} autoOpen={autoOpen} hideAuto={hideAuto} onHideAuto={setHideAuto} actions={actions} openOnly={openOnly} onOpenOnly={setOpenOnly}
+        <AccountDetail account={current} openRows={tickRows} autoOpen={autoOpen} hideAuto={hideAuto} onHideAuto={setHideAuto} onPayCard={canEdit ? (id) => setAdding({ payCard: id }) : undefined} actions={actions} openOnly={openOnly} onOpenOnly={setOpenOnly}
           nextLabel={nextLabel} />
       </div>
 
@@ -321,6 +321,7 @@ export default function MonthPage() {
       {adding === "record" && <RecordPaymentModal plan={plan} monthKey={mk} onSave={saveExpense} onRemovePart={removePart} onClose={() => setAdding(null)} />}
       {(adding === "new" || adding === "maybe") && <NewExpenseModal plan={plan} monthKey={mk} initialType={adding === "maybe" ? "maybe" : "monthly"} onSave={saveExpense} onClose={() => setAdding(null)} />}
       {adding === "transfer" && <TransferModal plan={plan} monthKey={mk} onSave={saveTransfer} onClose={() => setAdding(null)} />}
+      {adding && adding.payCard && <TransferModal plan={plan} monthKey={mk} initialKind="card" initialTo={"card|" + adding.payCard} onSave={saveTransfer} onClose={() => setAdding(null)} />}
       {modal === "income" && <IncomeReceivedModal plan={plan} monthKey={mk} onSave={saveIncome} onClose={() => setModal(null)} />}
       {editColl && (
         <PickItemModal {...PICK[editColl]} items={plan[editColl]} onClose={() => setModal(null)}
