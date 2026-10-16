@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { AccountLogo, Badge, Button, EmptyState, StatCard, cx } from "../../components/ui";
 import { useProfile } from "../../contexts/ProfileContext";
 import { useViewMonth } from "../../hooks/useViewMonth";
-import { INSTALLMENT_TYPES, N, fmt, fmtK, instFor, instPaid, instType, mDiff, mLabel, mShort, nextM, ordinal, viaLabel } from "../../domain";
+import { INSTALLMENT_TYPES, N, fmt, instFor, instPaid, instType, mDiff, mLabel, mShort, nextM, ordinal, viaLabel } from "../../domain";
 import { viaLogo } from "../../lib/banks";
 import { useItemEditor } from "../editors/useItemEditor";
 
@@ -46,12 +46,12 @@ function Row({ plan, item, mk, editor, running }) {
           <i className={cx(pct >= 99.5 && "done", !started && "idle")} style={{ width: pct + "%" }} />
         </div>
         <div className="inst-m">
-          <span><b className="n">{fmtK(paid)}</b> of <span className="n">{fmtK(item.total)}</span> paid</span>
-          <span>{running ? `${fmtK(N(item.total) - paid)} to go · ${left ? "ends " + mLabel(addMonths(mk, left)) : "last payment this month"}` : started ? "Finished" : "Not started"}</span>
+          <span><b className="n">{fmt(paid)}</b> of <span className="n">{fmt(item.total)}</span> paid</span>
+          <span>{running ? `${fmt(N(item.total) - paid)} to go · ${left ? "ends " + mLabel(addMonths(mk, left)) : "last payment this month"}` : started ? "Finished" : "Not started"}</span>
         </div>
       </div>
       <div className="inst-r">
-        <b className="n">{running ? fmt(slice.amount, 0) : "—"}</b>
+        <b className="n">{running ? fmt(slice.amount) : "—"}</b>
         <small>{running ? "this month" : started ? "nothing due" : "from " + mShort(item.startMonth)}</small>
         {editor.canEdit && <Button size="sm" variant="ghost" onClick={() => editor.openEdit("installments", item)} aria-label={"Edit " + item.name}>Edit</Button>}
       </div>
@@ -88,10 +88,10 @@ export default function CommitmentsPage() {
       </div>
 
       <div className="stats">
-        <StatCard highlight label="Due this month" value={fmt(monthlyTotal, 0)} sub={`${running.length} running`} />
-        <StatCard label="Still owed" value={fmt(owed, 0)} sub="across everything running, this month included" />
+        <StatCard highlight label="Due this month" value={fmt(monthlyTotal)} sub={`${running.length} running`} />
+        <StatCard label="Still owed" value={fmt(owed)} sub="across everything running, this month included" />
         <StatCard label="Next to finish" value={next ? next.name : "—"} subTone="pos"
-          sub={next ? (monthsLeft(next, mk) ? `Last payment in ${mLabel(addMonths(mk, monthsLeft(next, mk)))}` : "Last payment this month") + ` · frees ${fmt(instFor(next, mk).amount, 0)} / month` : "Nothing running"} />
+          sub={next ? (monthsLeft(next, mk) ? `Last payment in ${mLabel(addMonths(mk, monthsLeft(next, mk)))}` : "Last payment this month") + ` · frees ${fmt(instFor(next, mk).amount)} / month` : "Nothing running"} />
       </div>
 
       <div className="tabbar">

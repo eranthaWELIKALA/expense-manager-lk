@@ -11,9 +11,9 @@
    object, so results are memoised per data object via WeakMap.
    ============================================================ */
 
-import { prevM, mShort, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, dateInMonth, todayISO, currentMonthKey } from "./months";
+import { prevM, nextM, mShort, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, dateInMonth, todayISO, currentMonthKey, addDays, monthOfDate } from "./months";
 import { N, fmt } from "./format";
-import { instFor, instType } from "./installments";
+import { instFor, instPaid, instType } from "./installments";
 import { versionAt } from "./versions";
 
 export const blankMonth = () => ({ ov: {}, extra: [], transfers: [], adjust: {} });
@@ -50,17 +50,24 @@ export const val = (l) => (l.eff !== undefined ? l.eff : l.actual !== null && l.
 const sum = (ps) => ps.reduce((s, p) => s + N(p.amount), 0);
 const joinTags = (...t) => t.filter(Boolean).join(" · ") || null;
 
-const LC = new WeakMap();
+const LC = new WeakMap(), LCN = new WeakMap();
 export function lines(d, key) {
   let m = LC.get(d); if (!m) { m = new Map(); LC.set(d, m); }
   if (m.has(key)) return m.get(key);
   m.set(key, []); // guards against re-entry while computing
-  const r = computeLines(d, key);
+  const r = computeLines(d, key, true);
   m.set(key, r);
   return r;
 }
 
-function computeLines(d, key) {
+/** A month's lines without the card bills — what card statements are built from (so they never depend on themselves). */
+function linesNoBills(d, key) {
+  let m = LCN.get(d); if (!m) { m = new Map(); LCN.set(d, m); }
+  if (!m.has(key)) m.set(key, computeLines(d, key, false));
+  return m.get(key);
+}
+
+function computeLines(d, key, withBills) {
   const M = d.months[key] || blankMonth();
   const out = [];
   const push = (o) => {
@@ -86,8 +93,8 @@ function computeLines(d, key) {
     const done = o2.done !== undefined ? !!o2.done : base.budget ? key < currentMonthKey() : paid >= plan - 0.005;
     const over = base.budget && paid > plan + 0.005;
     const progress = base.budget
-      ? (over ? `${fmt(paid - plan, 0)} over budget` : `${fmt(paid, 0)} of ${fmt(plan, 0)} spent`)
-      : done ? (pays.length > 1 ? `paid in ${pays.length} parts` : null) : `${fmt(paid, 0)} of ${fmt(plan, 0)} paid`;
+      ? (over ? `${fmt(paid - plan)} over budget` : `${fmt(paid)} of ${fmt(plan)} spent`)
+      : done ? (pays.length > 1 ? `paid in ${pays.length} parts` : null) : `${fmt(paid)} of ${fmt(plan)} paid`;
     out.push({
       ...base, actual: paidHere, done, paid, over, remaining: done ? 0 : Math.max(0, plan - paid), payments: pays, portions: true,
       eff: done ? paidHere : Math.max(plan - (paid - paidHere), paidHere), // still expected to leave here: the unpaid rest
@@ -114,14 +121,18 @@ function computeLines(d, key) {
     })
   );
 
-  /* last month's card totals bill to the card's bank */
-  if (d.months[prevM(key)]) {
+  /* card statements due this month bill to the card's bank */
+  if (withBills) {
     (d.cards || []).forEach((c) => {
-      const tot = cardTotal(d, prevM(key), c.id);
-      if (Math.abs(tot) < 0.005 || !c.bank) return;
-      const day = N(c.dueDay) >= 1 ? Math.min(31, Math.round(N(c.dueDay))) : null;
+      if (!c.bank) return;
+      const due = billsIn(d, c, key);
+      const tot = due.reduce((s, b) => s + cardTotal(d, b.cycle, c.id), 0);
+      if (Math.abs(tot) < 0.005) return;
+      const last = due[due.length - 1];
+      const day = last.due ? dayOfDate(last.due) : null;
       push({ key: "b:" + c.id, label: c.name + " bill", kind: "bank", id: c.bank, flow: "out", plan: tot, origin: "bill",
-        tag: joinTags(mShort(prevM(key)), day ? "due " + ordinal(day) : null), locked: true, day, ...(day ? { date: dateInMonth(key, day) } : {}) });
+        tag: joinTags(stmtDay(c) ? "statement " + dayMonthLabel(last.statement) : mShort(last.cycle), day ? "due " + ordinal(day) : null),
+        locked: true, day, ...(last.due ? { date: last.due } : {}) });
     });
   }
 
@@ -155,6 +166,7 @@ function computeLines(d, key) {
     const tag = (it.type ? instType(it).noun + " " : "") + (s.of ? s.n + "/" + s.of : "#" + s.n) + (it.day ? " · due " + ordinal(it.day) : "") + (it.auto ? " · auto" : "");
     push({ key: "i:" + it.id, label: it.name, kind: it.via.kind, id: it.via.id, flow: "out", plan: s.amount,
       origin: "installment", tag, locked: true, day: it.day || null,
+      ...(it.auto ? { auto: true } : {}),
       autoPaid: !!it.auto && dateInMonth(key, it.day) <= todayISO() }); // auto-debited once the due day passes
   });
 
@@ -180,30 +192,105 @@ function computeLines(d, key) {
   return out;
 }
 
+/* ---------------- card statements ----------------
+   A card's statement cycle is named by the month its statement is issued in. With a statement day S,
+   cycle M holds the card's lines dated up to S in M plus those after S in the month before; the bill
+   is due `payDays` (default 21) after the statement. With no statement day, a cycle is the calendar
+   month and its bill falls next month (on `dueDay`, if set). */
+
+export const PAY_DAYS = 21;
+export const stmtDay = (c) => (N(c && c.statementDay) >= 1 ? Math.min(31, Math.round(N(c.statementDay))) : null);
+export const payDays = (c) => (N(c && c.payDays) >= 1 ? Math.round(N(c.payDays)) : PAY_DAYS);
+
+/** Cycle M's statement date and pay-by date (either may be null). */
+export function cardCycleDates(c, M) {
+  const S = stmtDay(c);
+  if (S) { const statement = dateInMonth(M, S); return { cycle: M, statement, due: addDays(statement, payDays(c)) }; }
+  return { cycle: M, statement: null, due: N(c.dueDay) >= 1 ? dateInMonth(nextM(M), Math.min(31, Math.round(N(c.dueDay)))) : null };
+}
+
+/** The statement cycles whose bill falls in month `key` (usually one). */
+export function billsIn(d, c, key) {
+  if (!stmtDay(c)) return [cardCycleDates(c, prevM(key))];
+  let M = nextM(key);
+  const out = [];
+  for (let i = 0; i < 4; i++, M = prevM(M)) { const b = cardCycleDates(c, M); if (monthOfDate(b.due) === key) out.unshift(b); }
+  return out;
+}
+
+const dayOfLine = (l) => (isDateISO(l.date) ? dayOfDate(l.date) : l.day || 1); // undated lines count from the 1st
+
 /**
- * One card's month: its charges, what was paid onto it, and what it bills next month (`due`).
- * A card billed to a bank has its last bill on that bank's side. A card with no bank keeps last
- * month's bill on the card itself (`prevDue`): payments onto it settle that first, the rest is paid ahead.
+ * One card's statement cycle: its charges, what was paid onto it, and what it bills (`due`).
+ * A card billed to a bank has its bill on that bank's side. A card with no bank keeps the bill
+ * on the card itself (`prevDue`): payments in the next cycle settle that first, the rest is paid ahead.
  */
 const CM = new WeakMap();
-function cardMonth(d, key, cardId, depth = 0) {
-  if (!d.months[key]) return { charged: 0, paidIn: 0, prevDue: 0, toPrevBill: 0, due: 0 };
-  let m = CM.get(d); if (!m) { m = new Map(); CM.set(d, m); }
-  const mk = key + "|" + cardId;
-  if (m.has(mk)) return m.get(mk);
+function cardCycle(d, M, cardId, depth = 0) {
+  const zero = { charged: 0, paidIn: 0, prevDue: 0, toPrevBill: 0, due: 0 };
   const card = (d.cards || []).find((c) => c.id === cardId) || {};
-  const ls = lines(d, key).filter((l) => l.kind === "card" && l.id === cardId);
+  const S = stmtDay(card);
+  if (!d.months[M] && !(S && d.months[prevM(M)])) return zero;
+  let m = CM.get(d); if (!m) { m = new Map(); CM.set(d, m); }
+  const mk = M + "|" + cardId;
+  if (m.has(mk)) return m.get(mk);
+  m.set(mk, zero); // guards against re-entry
+  const on = (key) => (d.months[key] ? linesNoBills(d, key).filter((l) => l.kind === "card" && l.id === cardId) : []);
+  const ls = S ? [...on(M).filter((l) => dayOfLine(l) <= S), ...on(prevM(M)).filter((l) => dayOfLine(l) > S)] : on(M);
   const charged = ls.filter((l) => l.flow !== "in").reduce((s, l) => s + val(l), 0);
   const paidIn = ls.filter((l) => l.flow === "in").reduce((s, l) => s + val(l), 0);
-  const prevDue = !card.bank && d.months[prevM(key)] && depth < MAX_CHAIN ? cardMonth(d, prevM(key), cardId, depth + 1).due : 0;
+  const prevDue = !card.bank && depth < MAX_CHAIN ? cardCycle(d, prevM(M), cardId, depth + 1).due : 0;
   const toPrevBill = Math.min(paidIn, prevDue);
   const r = { charged, paidIn, prevDue, toPrevBill, due: Math.max(0, charged - (paidIn - toPrevBill)) };
   m.set(mk, r);
   return r;
 }
 
-/** What a card bills for a month: its charges less anything paid ahead onto it (never below zero). */
-export const cardTotal = (d, key, cardId) => cardMonth(d, key, cardId).due;
+/** What a card's statement cycle bills: its charges less anything paid ahead onto it (never below zero). */
+export const cardTotal = (d, M, cardId) => cardCycle(d, M, cardId).due;
+
+/** When the statement a card line lands on is issued (no statement day: the start of the next month). */
+const statementOf = (c, key, l) => {
+  const S = stmtDay(c);
+  if (!S) return nextM(key) + "-01";
+  return dayOfLine(l) <= S ? dateInMonth(key, S) : dateInMonth(nextM(key), S);
+};
+
+/** A charge counts as owed once it's ticked (or part paid), or once the statement it's on has been issued. */
+const counted = (c, key, l) => l.done || l.portions || statementOf(c, key, l) <= todayISO();
+
+/**
+ * The rest of every installment plan on a card that isn't owed yet — the bank holds it against the
+ * limit from the start: later months' slices, plus this month's while it isn't counted.
+ */
+function cardInstallmentsAhead(d, key, c) {
+  const here = linesNoBills(d, key);
+  return (d.installments || []).filter((it) => it.via && it.via.kind === "card" && it.via.id === c.id).reduce((s, it) => {
+    const later = Math.max(0, N(it.total) - instPaid(it, key));
+    const line = here.find((l) => l.key === "i:" + it.id && l.kind === "card" && l.id === c.id);
+    return s + later + (line && !counted(c, key, line) ? val(line) : 0);
+  }, 0);
+}
+
+/**
+ * What a card really owes at the end of a month: carried over, plus charges made, less payments.
+ * A charge counts once it's ticked, or once the statement it's on has been issued.
+ */
+const CO = new WeakMap();
+function cardOwed(d, key, c, depth = 0) {
+  if (!d.months[key]) return 0;
+  let m = CO.get(d); if (!m) { m = new Map(); CO.set(d, m); }
+  const mk = key + "|" + c.id;
+  if (m.has(mk)) return m.get(mk);
+  m.set(mk, 0);
+  const before = depth < MAX_CHAIN ? cardOwed(d, prevM(key), c, depth + 1) : 0;
+  const moved = linesNoBills(d, key).filter((l) => l.kind === "card" && l.id === c.id && !l.maybe)
+    .reduce((s, l) => s + (l.flow === "in" ? -settled(l) : counted(c, key, l) ? val(l) : settled(l)), 0);
+  const bill = lines(d, key).find((l) => l.key === "b:" + c.id); // paid on the bank's side
+  const r = before + moved - (bill ? (bill.done ? val(bill) : bill.portions ? N(bill.paid) : 0) : 0);
+  m.set(mk, r);
+  return r;
+}
 
 /* month results, memoised — openings chain backwards through the months you've opened */
 const MC = new WeakMap();
@@ -258,22 +345,31 @@ function doMonth(d, key, depth) {
     const charges = rows.filter((l) => l.flow !== "in");
     const charged = charges.reduce((s, l) => s + val(l), 0);
     const paid = rows.filter((l) => l.flow === "in").reduce((s, l) => s + val(l), 0); // paid ahead this month
-    // owed right now: last month's bill until it's paid, plus this month's charges so far, less anything paid onto the card
-    const cm = cardMonth(d, key, c.id, depth);
-    const line = ls.find((l) => l.key === "b:" + c.id); // on the bank's side
-    const dueDate = N(c.dueDay) >= 1 ? dateInMonth(key, Math.min(31, Math.round(N(c.dueDay)))) : null;
-    const bill = line ? { amount: val(line), left: line.done ? 0 : N(line.remaining), date: line.date || null, done: !!line.done }
-      : cm.prevDue > 0.005 ? { amount: cm.prevDue, left: cm.prevDue - cm.toPrevBill, date: dueDate, done: cm.prevDue - cm.toPrevBill < 0.005 } : null;
-    const billLeft = bill ? bill.left : 0;
-    const moved = rows.reduce((s, l) => s + (l.maybe ? 0 : l.flow === "in" ? -settled(l) : settled(l)), 0);
-    const balance = Math.max(0, billLeft + moved + cm.toPrevBill); // payments that settled the card's own bill are already off billLeft
+    // the bill due this month: on the bank's side, or carried on the card when it has no bank
+    const dues = billsIn(d, c, key);
+    const last = dues[dues.length - 1];
+    const line = ls.find((l) => l.key === "b:" + c.id);
+    let bill = null;
+    if (line) bill = { amount: val(line), left: line.done ? 0 : N(line.remaining), date: line.date || null, done: !!line.done };
+    else if (!c.bank && dues.length) {
+      const amount = dues.reduce((s, b) => s + cardTotal(d, b.cycle, c.id), 0);
+      const settledBy = dues.reduce((s, b) => s + cardCycle(d, nextM(b.cycle), c.id).toPrevBill, 0);
+      if (amount > 0.005) bill = { amount, left: Math.max(0, amount - settledBy), date: last.due, done: amount - settledBy < 0.005 };
+    }
+    if (bill) bill.statement = last.statement;
+    // the next statement still building up (not the one due this month)
+    const upcoming = cardCycleDates(c, dues.some((b) => b.cycle === key) ? nextM(key) : key);
+    const cm = cardCycle(d, upcoming.cycle, c.id, depth);
+    const owed = Math.max(0, cardOwed(d, key, c, depth)); // what's really owed now
+    const instAhead = cardInstallmentsAhead(d, key, c); // installments on the card still to come
+    const balance = owed + instAhead;
     return {
-      o: c, rows, bill,
+      o: c, rows, bill, next: upcoming, owed, instAhead,
       balance, available: N(c.limit) > 0 ? N(c.limit) - balance : null,
       plan: charges.reduce((s, l) => s + N(l.plan), 0),
       actual: charges.reduce((s, l) => s + (l.actual !== null && l.actual !== undefined ? N(l.actual) : 0), 0),
-      charged, paid: paid - cm.toPrevBill, // paid ahead
-      due: cm.due, // what it bills next month
+      charged, paid, // paid onto the card this month
+      due: cm.due, // what the next statement bills
     };
   });
 

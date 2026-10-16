@@ -45,9 +45,9 @@ export default function SetupPage() {
           </nav>
           <div className="setup-sum">
             <span className="lab">Planned for {mLabel(mk)}</span>
-            <div><span>Comes in</span><b className="n pos">{fmt(comesIn, 0)}</b></div>
-            <div><span>Goes out</span><b className="n">{fmt(goesOut, 0)}</b></div>
-            <div className="tot"><span>Left over</span><b className={cx("n", comesIn - goesOut < 0 && "neg")}>{fmt(comesIn - goesOut, 0)}</b></div>
+            <div><span>Comes in</span><b className="n pos">{fmt(comesIn)}</b></div>
+            <div><span>Goes out</span><b className="n">{fmt(goesOut)}</b></div>
+            <div className="tot"><span>Left over</span><b className={cx("n", comesIn - goesOut < 0 && "neg")}>{fmt(comesIn - goesOut)}</b></div>
           </div>
         </aside>
         <div className="setup-main">

@@ -1,5 +1,5 @@
 import React from "react";
-import { Field, Select, TextInput } from "../../components/ui";
+import { Field, MoneyInput, Select, TextInput } from "../../components/ui";
 import { INSTALLMENT_TYPES, fmt, instType, isDateISO, mDiff, mLabel, mShort, monthOfDate, numOr, todayISO } from "../../domain";
 import { BANKS, NETWORKS, NO_LOGO, bankInfo, guessBank, guessNetwork, networkInfo } from "../../lib/banks";
 
@@ -21,10 +21,21 @@ export function TextField({ form, name, label, placeholder, hint }) {
   );
 }
 
-export function MoneyField({ form, name = "amount", label = "Amount", hint, className }) {
+export function MoneyField({ form, name = "amount", label = "Amount", hint, className, onChange }) {
   return (
     <Field label={label} hint={hint} error={form.errors[name]} className={className}>
-      <TextInput className="n" inputMode="decimal" value={form.values[name] ?? ""} onChange={form.set(name)} placeholder="0" />
+      <MoneyInput value={form.values[name] ?? ""} onChange={onChange || ((v) => form.set(name, v))} placeholder="0.00" />
+    </Field>
+  );
+}
+
+/** A whole number that isn't money — a day of the month, a count of months. */
+export function CountField({ form, name, label, hint, placeholder = "", className, onChange }) {
+  const set = onChange || ((v) => form.set(name, v));
+  return (
+    <Field label={label} hint={hint} error={form.errors[name]} className={className}>
+      <TextInput className="n" inputMode="numeric" value={form.values[name] ?? ""} placeholder={placeholder}
+        onChange={(e) => set(e.target.value.replace(/[^\d]/g, ""))} />
     </Field>
   );
 }
@@ -133,7 +144,7 @@ function startedBefore(v, planStart) {
   if (!(monthly > 0) || !(total > 0)) return null;
   const paid = Math.min(total, numOr(v.prepaid) + before * monthly);
   if (paid >= total - 0.005) return `Started before this plan (${from}) and fully paid by then, so it won't show in any month.`;
-  return `Started before this plan (${from}): ${fmt(paid, 0)} already paid, ${fmt(total - paid, 0)} left from ${first}.`;
+  return `Started before this plan (${from}): ${fmt(paid)} already paid, ${fmt(total - paid)} left from ${first}.`;
 }
 
 /**
@@ -147,6 +158,24 @@ export function InstallmentFields({ form, planStart }) {
     ? numOr(v.months) >= 1 && total > 0 && `${fmt(total / Math.round(numOr(v.months)))} a month for ${Math.round(numOr(v.months))} months`
     : numOr(v.monthly) > 0 && total > prepaid && `${fmt(numOr(v.monthly))} a month for about ${Math.ceil((total - prepaid) / numOr(v.monthly))} months`;
   const type = instType(v.itype);
+
+  /* Fixed number of months: type the total or what you pay each month — the other follows.
+     `lead` remembers which one you typed, so changing the months keeps that one. */
+  const money = (x) => (isFinite(x) && x > 0 ? (Math.round(x * 100) / 100).toFixed(2) : "");
+  const termOf = (vals) => Math.round(numOr(vals.months));
+  const follow = (vals) => {
+    const n = termOf(vals);
+    if (!(n >= 1)) return vals;
+    return vals.lead === "monthly"
+      ? { ...vals, total: numOr(vals.monthly) > 0 ? money(numOr(vals.monthly) * n) : vals.total }
+      : { ...vals, monthly: numOr(vals.total) > 0 ? money(numOr(vals.total) / n) : vals.monthly };
+  };
+  const setTerm = (field) => (val) => form.setValues((vals) => {
+    const next = { ...vals, [field]: val };
+    if (vals.mode !== "term") return next;
+    if (field !== "months") next.lead = field;
+    return follow(next);
+  });
   return (
     <>
       <div className="form-grid">
@@ -161,10 +190,11 @@ export function InstallmentFields({ form, planStart }) {
             <option value="open">Fixed amount until paid</option>
           </Select>
         </Field>
-        <MoneyField form={form} name="total" label={type.total} />
-        {v.mode === "term"
-          ? <MoneyField form={form} name="months" label="Months" />
-          : <MoneyField form={form} name="monthly" label="Pay each month" />}
+        <MoneyField form={form} name="total" label={type.total} onChange={setTerm("total")}
+          hint={v.mode === "term" && v.lead === "monthly" ? "Worked out from the monthly amount." : undefined} />
+        {v.mode === "term" && <CountField form={form} name="months" label="Months" onChange={setTerm("months")} />}
+        <MoneyField form={form} name="monthly" label="Pay each month" onChange={setTerm("monthly")}
+          hint={v.mode === "term" ? (v.lead === "monthly" ? undefined : "Or type it here — the total follows.") : undefined} />
         {v.mode === "open" && <MoneyField form={form} name="prepaid" label="Already paid" hint="Down payment, if any" />}
         <DateField form={form} label="First payment" hint="Can be before this plan started." />
         <Field label="Each month" hint={v.auto === "auto" ? "Marked paid on its due day. Untick it if a deduction fails." : "Tick it off in the month when you pay."}>

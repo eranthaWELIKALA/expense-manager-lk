@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  nextM, prevM, mDiff, isMonthKey, fmt, fmtK, parseAmount,
+  nextM, prevM, mDiff, isMonthKey, fmt, parseAmount, groupDigits, cleanAmount, settleAmount,
   instFor, instPaid, instType, computeMonth, blankMonth,
   blankPlan, samplePlan, normalizePlan, setOverride, removeLine, addOneOff, openMonth, rollInto,
 } from "./index";
@@ -37,8 +37,14 @@ describe("months", () => {
 describe("format", () => {
   it("formats and parses", () => {
     expect(fmt(1234.5)).toBe("1,234.50");
-    expect(fmtK(125000)).toBe("125K");
-    expect(fmtK(1500000)).toBe("1.5M");
+    expect(fmt(7500000)).toBe("7,500,000.00");
+    expect(fmt(-85)).toBe("-85.00");
+    expect(groupDigits("7500000.5")).toBe("7,500,000.5");
+    expect(groupDigits("")).toBe("");
+    expect(cleanAmount("7,500,000.567")).toBe("7500000.56");
+    expect(cleanAmount("-12", true)).toBe("-12");
+    expect(cleanAmount("-12")).toBe("12");
+    expect(settleAmount("7500000")).toBe("7500000.00");
     expect(parseAmount("1,250.5")).toBe(1250.5);
     expect(parseAmount("  ")).toBeNull();
     expect(parseAmount("abc")).toBeNull();
@@ -336,7 +342,7 @@ describe("paying in parts", () => {
   it("parts on the same method: progress shown, the rest still expected, paid when the total is reached", () => {
     const before = bank(base()).closing;
     let d = recordPayment(base(), "2026-08", "t:t1", { amount: 500, via: { kind: "bank", id: "b1" }, date: "2026-08-03" });
-    expect(rentOf(d)).toMatchObject({ done: false, paid: 500, remaining: 1500, actual: 500, tag: "500 of 2,000 paid" });
+    expect(rentOf(d)).toMatchObject({ done: false, paid: 500, remaining: 1500, actual: 500, tag: "500.00 of 2,000.00 paid" });
     expect(bank(d).closing).toBe(before); // still 2,000 expected out of the bank
     d = recordPayment(d, "2026-08", "t:t1", { amount: 1500, via: { kind: "bank", id: "b1" }, date: "2026-08-20" });
     expect(rentOf(d)).toMatchObject({ done: true, paid: 2000, remaining: 0, tag: "paid in 2 parts" });
@@ -390,7 +396,7 @@ describe("budgets (spent in several payments)", () => {
     const empty = withBudget(now);
     const full = computeMonth(empty, now).banks[0].closing;
     let d = pay(empty, now, 6000); // a single payment equal to the budget doesn't close it
-    expect(line(d, now)).toMatchObject({ budget: true, done: false, paid: 6000, tag: "budget · 6,000 of 6,000 spent" });
+    expect(line(d, now)).toMatchObject({ budget: true, done: false, paid: 6000, tag: "budget · 6,000.00 of 6,000.00 spent" });
     d = pay(pay(withBudget(now), now, 2500), now, 1500);
     expect(line(d, now)).toMatchObject({ done: false, paid: 4000, remaining: 2000 });
     expect(computeMonth(d, now).banks[0].closing).toBe(full); // still 6,000 set aside
@@ -400,7 +406,7 @@ describe("budgets (spent in several payments)", () => {
     const empty = withBudget(now);
     const full = computeMonth(empty, now).banks[0].closing;
     const d = pay(pay(empty, now, 4000), now, 3000);
-    expect(line(d, now)).toMatchObject({ paid: 7000, over: true, tag: "budget · 1,000 over budget" });
+    expect(line(d, now)).toMatchObject({ paid: 7000, over: true, tag: "budget · 1,000.00 over budget" });
     expect(computeMonth(d, now).banks[0].closing).toBe(full - 1000);
   });
 

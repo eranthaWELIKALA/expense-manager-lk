@@ -1,6 +1,6 @@
 import React from "react";
 import { AccountLogo, Badge, EmptyState, cx } from "../../components/ui";
-import { dayMonthLabel, fmt, ordinal, val } from "../../domain";
+import { dayMonthLabel, fmt, ordinal, payDays, stmtDay, val } from "../../domain";
 import { LineHeader, LineRow } from "./LineRow";
 import { isOpen } from "./accounts";
 
@@ -15,20 +15,20 @@ const LOCKED_HINT = { bank: "Comes from elsewhere — change it at the source", 
  * Right column of the month view: one account's lines, or (account = null)
  * every open line across accounts. `openRows` = [{line, account}] for that view.
  */
-export function AccountDetail({ account, openRows, actions, openOnly, onOpenOnly, nextLabel }) {
+export function AccountDetail({ account, openRows, autoOpen = 0, hideAuto = false, onHideAuto, actions, openOnly, onOpenOnly, nextLabel }) {
   let head, stats, body;
   if (!account) {
     const toPay = openRows.filter((r) => r.line.flow === "out").reduce((s, r) => s + val(r.line), 0);
-    head = { title: "Needs a tick", note: "Every unticked line this month, across all accounts" };
+    head = { title: "Needs a tick", note: "Every unticked line this month, across all accounts" + (hideAuto && autoOpen ? ` · ${autoOpen} auto-debit${autoOpen === 1 ? "" : "s"} hidden` : "") };
     stats = [
       <Stat key="n" label="Open lines" value={openRows.length} />,
       <Stat key="a" label="Accounts" value={new Set(openRows.map((r) => r.account.key)).size} />,
-      <Stat key="p" label="Still to pay" value={fmt(toPay, 0)} />,
+      <Stat key="p" label="Still to pay" value={fmt(toPay)} />,
     ];
     body = (
       <>
         <LineHeader showBalance={false} />
-        {openRows.length === 0 && <EmptyState>Everything this month is ticked off.</EmptyState>}
+        {openRows.length === 0 && <EmptyState>{hideAuto && autoOpen ? "Only auto-debits are left — they're marked paid on their due day." : "Everything this month is ticked off."}</EmptyState>}
         {openRows.map(({ line, account: a }) => (
           <LineRow key={line.key} line={line} showBalance={false} account={a.name} actions={actions} lockedHint={LOCKED_HINT[a.kind]} />
         ))}
@@ -42,24 +42,26 @@ export function AccountDetail({ account, openRows, actions, openOnly, onOpenOnly
       title: a.name, logo: a.logo,
       badges: <>{a.kind === "cash" && <Badge tone="brass">cash</Badge>}{card && a.late && <Badge tone="flag">bill overdue</Badge>}{card && a.overLimit && <Badge tone="flag">over limit</Badge>}{card && a.over && <Badge tone="flag">over plan</Badge>}{a.short && <Badge tone="flag">short</Badge>}</>,
       note: card
-        ? <>{!a.o.bank ? "No bank set — pay it from any bank with Move money" : a.due > 0.005 ? <>Bills <b>{a.bankName}</b> in {nextLabel}</> : "No charges yet"}{a.o.dueDay ? " · pay by the " + ordinal(a.o.dueDay) : ""}{a.note ? " · " + a.note : ""}</>
+        ? <>{!a.o.bank ? "No bank set — pay it from any bank with Move money" : <>Bills <b>{a.bankName}</b></>}
+          {stmtDay(a.o) ? ` · statement on the ${ordinal(stmtDay(a.o))}, pay within ${payDays(a.o)} days` : a.o.dueDay ? " · pay by the " + ordinal(a.o.dueDay) : ""}{a.note ? " · " + a.note : ""}</>
         : a.note,
     };
     stats = card
       ? [
-        <Stat key="o" label="Balance" value={fmt(a.balance, 0)} tone={a.overLimit ? "neg" : undefined} />,
-        ...(a.limit ? [<Stat key="l" label={"Available of " + fmt(a.limit, 0)} value={fmt(a.available, 0)} tone={a.overLimit ? "neg" : "pos"} />] : []),
+        <Stat key="o" label="Balance" value={fmt(a.balance)} tone={a.overLimit ? "neg" : undefined} />,
+        ...(a.instAhead > 0.005 ? [<Stat key="ia" label="Of which installments to come" value={fmt(a.instAhead)} />] : []),
+        ...(a.limit ? [<Stat key="l" label={"Available of " + fmt(a.limit)} value={fmt(a.available)} tone={a.overLimit ? "neg" : "pos"} />] : []),
         ...(a.bill && a.bill.amount > 0.005 ? [<Stat key="d" label={a.bill.date ? "Pay by " + dayMonthLabel(a.bill.date) : "Bill this month"}
-          value={a.bill.left > 0.005 ? fmt(a.bill.left, 0) : "Paid"} tone={a.late ? "neg" : a.bill.left > 0.005 ? undefined : "pos"} />] : []),
-        <Stat key="c" label="Charged" value={fmt(a.charged, 0)} />,
-        <Stat key="b" label={"To bill in " + nextLabel} value={fmt(a.due, 0)} />,
+          value={a.bill.left > 0.005 ? fmt(a.bill.left) : "Paid"} tone={a.late ? "neg" : a.bill.left > 0.005 ? undefined : "pos"} />] : []),
+        <Stat key="c" label="Charged" value={fmt(a.charged)} />,
+        <Stat key="b" label={a.next && a.next.statement ? "Statement " + dayMonthLabel(a.next.statement) : "To bill in " + nextLabel} value={fmt(a.due)} />,
       ]
       : [
-        <Stat key="o" label="Brought forward" value={fmt(a.opening, 0)} />,
-        <Stat key="i" label="In" value={fmt(a.inSum, 0)} tone="pos" />,
-        <Stat key="u" label="Out" value={fmt(a.outSum, 0)} />,
-        <Stat key="c" label={a.short ? "Closing · short" : "Closing"} value={fmt(a.closing, 0)} tone={a.short ? "neg" : undefined} />,
-        <Stat key="a" label="Actual balance" value={fmt(a.actual, 0)} tone={a.actual < -0.005 ? "neg" : undefined} />,
+        <Stat key="o" label="Brought forward" value={fmt(a.opening)} />,
+        <Stat key="i" label="In" value={fmt(a.inSum)} tone="pos" />,
+        <Stat key="u" label="Out" value={fmt(a.outSum)} />,
+        <Stat key="c" label={a.short ? "Closing · short" : "Closing"} value={fmt(a.closing)} tone={a.short ? "neg" : undefined} />,
+        <Stat key="a" label="Actual balance" value={fmt(a.actual)} tone={a.actual < -0.005 ? "neg" : undefined} />,
       ];
     const base = Math.abs(a.opening || 0) || 1;
     body = (
@@ -83,6 +85,12 @@ export function AccountDetail({ account, openRows, actions, openOnly, onOpenOnly
           <div className="acct-t"><h2>{head.title}</h2>{head.badges}</div>
           {head.note ? <p>{head.note}</p> : null}
         </div>
+        {!account && (autoOpen > 0 || hideAuto) && (
+          <div className="mseg" role="group" aria-label="Auto-debits">
+            <button type="button" aria-pressed={!hideAuto} className={cx(!hideAuto && "on")} onClick={() => onHideAuto(false)}>All</button>
+            <button type="button" aria-pressed={hideAuto} className={cx(hideAuto && "on")} onClick={() => onHideAuto(true)}>Hide auto-debits</button>
+          </div>
+        )}
         {account && (
           <div className="mseg" role="group" aria-label="Show">
             <button type="button" aria-pressed={!openOnly} className={cx(!openOnly && "on")} onClick={() => onOpenOnly(false)}>All lines</button>

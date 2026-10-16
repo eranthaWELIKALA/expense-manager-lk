@@ -3,17 +3,29 @@
 /** Coerce anything to a finite number (non-numbers become 0). */
 export const N = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
 
-export const fmt = (v, dp) => {
-  const n = N(v);
-  const d = dp === undefined ? (Math.abs(n % 1) > 0.004 ? 2 : 0) : dp;
-  return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+/** Money as shown everywhere: thousands separated, always two decimals ("7,500,000.00"). */
+export const fmt = (v) => N(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** What's typed into an amount box, grouped as you go ("7500000.5" → "7,500,000.5"). */
+export const groupDigits = (raw) => {
+  const m = /^(-?)(\d*)(\.?)(\d*)$/.exec(String(raw ?? ""));
+  if (!m) return String(raw ?? "");
+  return m[1] + m[2].replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",") + m[3] + m[4];
 };
 
-export const fmtK = (v) => {
-  const n = N(v), a = Math.abs(n);
-  if (a >= 1000000) return (n / 1000000).toFixed(2).replace(/\.?0+$/, "") + "M";
-  if (a >= 10000) return Math.round(n / 1000) + "K";
-  return fmt(n, 0);
+/** Keep only what an amount can hold: digits, one point, at most two decimals (and a leading minus if allowed). */
+export const cleanAmount = (typed, allowNegative = false) => {
+  const t = String(typed ?? "").trim();
+  const neg = allowNegative && t.startsWith("-") ? "-" : "";
+  const s = t.replace(/[^\d.]/g, "");
+  const i = s.indexOf(".");
+  return neg + (i < 0 ? s : s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, "").slice(0, 2));
+};
+
+/** A typed amount tidied when you leave the box: "7500000" → "7500000.00" (left alone if it isn't a number). */
+export const settleAmount = (raw) => {
+  const v = parseAmount(raw);
+  return v === null ? String(raw ?? "") : v.toFixed(2);
 };
 
 /** Parse user-typed amounts ("1,250.50"). Returns null for blank, NaN-safe. */

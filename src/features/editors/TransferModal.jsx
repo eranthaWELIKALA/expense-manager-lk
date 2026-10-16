@@ -1,7 +1,7 @@
 import React from "react";
 import { Field, FormModal, Segmented, Select } from "../../components/ui";
 import { useForm } from "../../hooks/useForm";
-import { defaultDateIn, firstMonth, fmt, isDateISO, mLabel, mShort, monthOfDate, nextM, numOr, computeMonth } from "../../domain";
+import { defaultDateIn, firstMonth, fmt, isDateISO, mLabel, mShort, monthOfDate, numOr, computeMonth } from "../../domain";
 import { validateAmount, validateDate } from "../../lib/validation";
 import { DateField, MoneyField, TextField, maxDate, minDateFor } from "./fields";
 
@@ -41,9 +41,9 @@ function cardPreview(plan, v) {
   const owed = bill ? bill.left : 0;
   const toBill = Math.min(amount, owed), ahead = amount - toBill;
   const parts = [];
-  if (owed > 0.005) parts.push(toBill >= owed - 0.005 ? `Settles the ${mShort(mk)} bill (${fmt(owed, 0)}).` : `Pays ${fmt(toBill, 0)} of the ${mShort(mk)} bill — ${fmt(owed - toBill, 0)} still to pay.`);
+  if (owed > 0.005) parts.push(toBill >= owed - 0.005 ? `Settles the ${mShort(mk)} bill (${fmt(owed)}).` : `Pays ${fmt(toBill)} of the ${mShort(mk)} bill — ${fmt(owed - toBill)} still to pay.`);
   else parts.push(bill ? `The ${mShort(mk)} bill is already paid.` : `No bill is due in ${mShort(mk)}.`);
-  if (ahead > 0.005) parts.push(`${fmt(ahead, 0)} is paid ahead, so the ${mShort(nextM(mk))} bill drops to ${fmt(Math.max(0, (card ? card.due : 0) - ahead), 0)}.`);
+  if (ahead > 0.005) parts.push(`${fmt(ahead)} is paid ahead, so the next bill drops to ${fmt(Math.max(0, (card ? card.due : 0) - ahead))}.`);
   return parts.join(" ");
 }
 

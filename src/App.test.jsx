@@ -59,7 +59,7 @@ describe("App", () => {
     let dlg = await screen.findByRole("dialog", { name: "Record payment" });
     await user.type(within(dlg).getByRole("combobox", { name: "What for" }), "Ren");
     await user.click(within(dlg).getByRole("option", { name: /^Rent/ }));
-    expect(within(dlg).getByLabelText("Amount paid").value).toBe("85000");
+    expect(within(dlg).getByLabelText("Amount paid").value).toBe("85,000");
     await user.click(within(dlg).getByRole("button", { name: "Mark paid" }));
     expect(await screen.findByText(/“Rent” paid\./)).toBeTruthy();
 
@@ -76,7 +76,7 @@ describe("App", () => {
     expect(await screen.findByText(/“Doctor” paid on/)).toBeTruthy();
     expect(screen.queryByLabelText("Doctor planned")).toBeNull(); // it's in the cash pot, not the open bank
     await user.click(screen.getByRole("button", { name: /^Daily cash/ }));
-    expect(screen.getByLabelText("Doctor planned").value).toBe("3,500");
+    expect(screen.getByLabelText("Doctor planned").value).toBe("3,500.00");
 
     // removing a row asks first; cancel keeps it, confirm deletes it
     const doctorRow = screen.getByLabelText("Doctor planned").closest(".row");
@@ -119,7 +119,7 @@ describe("App", () => {
     dlg = await screen.findByRole("dialog", { name: "Move money" });
     await user.type(within(dlg).getByLabelText("Amount"), "10000");
     await user.click(within(dlg).getByRole("button", { name: "Record" }));
-    expect(await screen.findByText(/Withdrew cash 10,000: Main current → Daily cash/)).toBeTruthy();
+    expect(await screen.findByText(/Withdrew cash 10,000.00: Main current → Daily cash/)).toBeTruthy();
 
     // what-if: a big payment shows whether it fits, then is dropped
     await user.click(screen.getByRole("button", { name: "More actions" }));
@@ -142,7 +142,7 @@ describe("App", () => {
     await user.type(within(dlg).getByLabelText("Total price"), "120000");
     await user.clear(within(dlg).getByLabelText("Months"));
     await user.type(within(dlg).getByLabelText("Months"), "6");
-    expect(within(dlg).getByText(/20,000 a month for 6 months/)).toBeTruthy();
+    expect(within(dlg).getByText(/20,000.00 a month for 6 months/)).toBeTruthy();
     await user.click(within(dlg).getByRole("button", { name: "Add installment" }));
     expect(await screen.findByText(/Installment “Phone” added/)).toBeTruthy();
     expect(screen.getByText("Phone")).toBeTruthy();
@@ -199,6 +199,6 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "Household" })).toBeTruthy();
     expect(screen.getByText("Editor")).toBeTruthy();
-    expect(screen.getByLabelText("Rent actual").value).toBe("85,000");
+    expect(screen.getByLabelText("Rent actual").value).toBe("85,000.00");
   });
 });

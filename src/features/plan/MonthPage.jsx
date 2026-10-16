@@ -6,7 +6,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { useConfirm } from "../../contexts/ConfirmContext";
 import { useViewMonth } from "../../hooks/useViewMonth";
 import {
-  computeMonth, fmt, fmtK, mLabel, mShort, nextM, monthRail,
+  computeMonth, fmt, mLabel, mShort, nextM, monthRail,
   N, isDateISO, isPayable, monthOfDate, setOverride, markPaid, recordPayment, removePayment, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, monthsToOpen, dayMonthLabel,
   addTransfer, payCard, makeReal, withoutMaybes, viaLabel, firstMonth, instType,
 } from "../../domain";
@@ -38,6 +38,7 @@ export default function MonthPage() {
   const [modal, setModal] = useState(null); // Actions menu: "income" | "edit:<coll>"
   const [selected, setSelected] = useState(null); // account key ("bank:<id>" …) or "open"; null = first account
   const [openOnly, setOpenOnly] = useState(false);
+  const [hideAuto, setHideAuto] = useState(false); // "Needs a tick": leave out automatic deductions
   const editor = useItemEditor({ startMonth: mk });
   const undo = useUndo();
   const navigate = useNavigate();
@@ -139,12 +140,12 @@ export default function MonthPage() {
       const spent = (line.paid || 0) + payment.amount;
       update((d) => recordPayment(ensureMonthsThrough(d, monthKey), monthKey, line.key, payment),
         { label: `${line.label} — spent ${fmt(payment.amount)} on ${dayMonthLabel(payment.date)}` + (payment.note ? ` (${payment.note})` : "") });
-      toast.success(`${fmt(payment.amount)} added to “${line.label}” — ${fmt(spent, 0)} of ${fmt(line.plan, 0)} spent` + (monthKey === mk ? "." : ` in ${mLabel(monthKey)}.`));
+      toast.success(`${fmt(payment.amount)} added to “${line.label}” — ${fmt(spent)} of ${fmt(line.plan)} spent` + (monthKey === mk ? "." : ` in ${mLabel(monthKey)}.`));
       setPaying(null);
     } else if (type === "pay") {
       const after = (line.paid || 0) + payment.amount;
       const settled = payment.settle || payment.amount >= line.remaining - 0.005 || after >= Number(line.plan) - 0.005;
-      const what = settled ? "paid" : `part paid (${fmt(after, 0)} of ${fmt(line.plan, 0)})`;
+      const what = settled ? "paid" : `part paid (${fmt(after)} of ${fmt(line.plan)})`;
       update((d) => recordPayment(ensureMonthsThrough(d, monthKey), monthKey, line.key, payment),
         { label: `${line.label} — ${settled ? "paid" : "part paid"} ${fmt(payment.amount)} on ${dayMonthLabel(payment.date)}` });
       toast.success(`“${line.label}” ${what}` + (monthKey === mk ? "." : ` in ${mLabel(monthKey)}.`));
@@ -195,14 +196,14 @@ export default function MonthPage() {
       update((d) => { result = payCard(ensureMonthsThrough(d, monthKey), monthKey, { cardId: to.id, bankId: from.id, amount, date }); return result.plan; },
         { label: `Paid card “${name(to)}” ${fmt(amount)} from ${name(from)}${on}` });
       const r = result || { toBill: 0, ahead: amount };
-      toast.success(r.toBill > 0.005 && r.ahead > 0.005 ? `${fmt(r.toBill, 0)} paid on the bill, ${fmt(r.ahead, 0)} paid ahead.`
-        : r.toBill > 0.005 ? `${fmt(r.toBill, 0)} paid on the “${name(to)}” bill.` : `${fmt(r.ahead, 0)} paid ahead on “${name(to)}” — next month's bill goes down.`);
+      toast.success(r.toBill > 0.005 && r.ahead > 0.005 ? `${fmt(r.toBill)} paid on the bill, ${fmt(r.ahead)} paid ahead.`
+        : r.toBill > 0.005 ? `${fmt(r.toBill)} paid on the “${name(to)}” bill.` : `${fmt(r.ahead)} paid ahead on “${name(to)}” — next month's bill goes down.`);
     } else {
       const verb = { cash: "Withdrew cash", deposit: "Deposited", bank: "Transferred", cashin: "Cash received" }[kind] || "Transferred";
       const route = from ? `${name(from)} → ${name(to)}` : `into ${name(to)}`;
       update((d) => addTransfer(ensureMonthsThrough(d, monthKey), monthKey, { from, to, amount, date, note }),
         { label: `${verb} ${fmt(amount)} — ${route}${note ? " (" + note + ")" : ""}${on}` });
-      toast.success(`${verb} ${fmt(amount, 0)}: ${route}` + (monthKey === mk ? "." : ` (in ${mLabel(monthKey)}).`));
+      toast.success(`${verb} ${fmt(amount)}: ${route}` + (monthKey === mk ? "." : ` (in ${mLabel(monthKey)}).`));
     }
     setAdding(null);
   };
@@ -215,6 +216,8 @@ export default function MonthPage() {
   const shortBecause = withMaybes.short.filter((b) => !without.short.some((x) => x.o.id === b.o.id));
   const maybeTotal = allMaybes.reduce((s, l) => s + N(l.plan), 0);
   const openRows = allAccounts.flatMap((a) => a.rows.filter(isOpen).map((line) => ({ line, account: a })));
+  const autoOpen = openRows.filter((r) => r.line.auto).length;
+  const tickRows = hideAuto ? openRows.filter((r) => !r.line.auto) : openRows;
   const current = selected === "open" ? null : allAccounts.find((a) => a.key === selected) || allAccounts[0] || null;
   const salaries = month.ls.filter((l) => l.origin === "salary");
   const routeTotal = month.spentDirect + month.spentCash + month.spentCard || 1;
@@ -234,19 +237,19 @@ export default function MonthPage() {
       )}
 
       <div className="stats">
-        <StatCard highlight label={`Left in ${plan.banks.length} bank${plan.banks.length === 1 ? "" : "s"}`} value={fmt(month.inBank, 0)}
-          sub={`${fmtK(month.inCash)} cash` + (month.short.length ? ` · ${month.short.length} short` : "")} />
-        <StatCard label="Salaries in" value={fmt(month.earned, 0)}
+        <StatCard highlight label={`Left in ${plan.banks.length} bank${plan.banks.length === 1 ? "" : "s"}`} value={fmt(month.inBank)}
+          sub={`${fmt(month.inCash)} cash` + (month.short.length ? ` · ${month.short.length} short` : "")} />
+        <StatCard label="Salaries in" value={fmt(month.earned)}
           sub={salaries.length ? `${salaries.filter((l) => l.done).length} of ${salaries.length} received` : "No salaries yet"} />
-        <StatCard label="Spent" value={fmt(month.spent, 0)} subTone={overPlan ? "neg" : "pos"}
-          sub={Math.abs(month.spent - month.planned) < 1 ? "On plan" : `${fmtK(Math.abs(month.spent - month.planned))} ${overPlan ? "over" : "under"} plan`}>
-          <div className="route" role="img" aria-label={`Direct ${fmtK(month.spentDirect)}, cash ${fmtK(month.spentCash)}, card ${fmtK(month.spentCard)}`}>
+        <StatCard label="Spent" value={fmt(month.spent)} subTone={overPlan ? "neg" : "pos"}
+          sub={Math.abs(month.spent - month.planned) < 1 ? "On plan" : `${fmt(Math.abs(month.spent - month.planned))} ${overPlan ? "over" : "under"} plan`}>
+          <div className="route" role="img" aria-label={`Direct ${fmt(month.spentDirect)}, cash ${fmt(month.spentCash)}, card ${fmt(month.spentCard)}`}>
             <i className="d" style={{ width: pct(month.spentDirect) }} /><i className="c" style={{ width: pct(month.spentCash) }} /><i className="k" style={{ width: pct(month.spentCard) }} />
           </div>
-          <div className="route-k" aria-hidden><span className="d">Direct {fmtK(month.spentDirect)}</span><span className="c">Cash {fmtK(month.spentCash)}</span><span className="k">Card {fmtK(month.spentCard)}</span></div>
+          <div className="route-k" aria-hidden><span className="d">Direct {fmt(month.spentDirect)}</span><span className="c">Cash {fmt(month.spentCash)}</span><span className="k">Card {fmt(month.spentCard)}</span></div>
         </StatCard>
         <StatCard label="Still to tick" value={`${openRows.length} line${openRows.length === 1 ? "" : "s"}`}
-          sub={`across ${new Set(openRows.map((r) => r.account.key)).size} accounts · ${fmtK(month.billsNext)} card bills in ${nextLabel}`} />
+          sub={`across ${new Set(openRows.map((r) => r.account.key)).size} accounts · ${fmt(month.billsNext)} card bills in ${nextLabel}`} />
       </div>
 
       {month.short.length > 0 && (
@@ -260,12 +263,12 @@ export default function MonthPage() {
       {allMaybes.length > 0 && (
         <div className="whatif" role="status">
           <div className="whatif-t">
-            <b>{allMaybes.length} what-if{allMaybes.length === 1 ? "" : "s"} in {mLabel(mk)} · {fmt(maybeTotal, 0)}</b>
+            <b>{allMaybes.length} what-if{allMaybes.length === 1 ? "" : "s"} in {mLabel(mk)} · {fmt(maybeTotal)}</b>
             <span>
               {shortBecause.length
                 ? `With ${allMaybes.length === 1 ? "it" : "them"}, ${shortBecause.map((b) => b.o.name).join(", ")} would go below zero.`
                 : `${allMaybes.length === 1 ? "It fits" : "They fit"} — no bank goes below zero.`}
-              {" "}Left in the banks: {fmt(withMaybes.inBank, 0)} with, {fmt(without.inBank, 0)} without.
+              {" "}Left in the banks: {fmt(withMaybes.inBank)} with, {fmt(without.inBank)} without.
             </span>
           </div>
           <div className="whatif-a">
@@ -288,7 +291,7 @@ export default function MonthPage() {
 
       <div className="mwork">
         <AccountList accounts={accounts} selected={current ? current.key : "open"} onSelect={setSelected} openCount={openRows.length} />
-        <AccountDetail account={current} openRows={openRows} actions={actions} openOnly={openOnly} onOpenOnly={setOpenOnly}
+        <AccountDetail account={current} openRows={tickRows} autoOpen={autoOpen} hideAuto={hideAuto} onHideAuto={setHideAuto} actions={actions} openOnly={openOnly} onOpenOnly={setOpenOnly}
           nextLabel={nextLabel} />
       </div>
 

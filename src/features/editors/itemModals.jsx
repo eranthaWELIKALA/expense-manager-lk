@@ -1,11 +1,11 @@
 import React from "react";
-import { Button, Field, FormModal, RemoveButton, Select } from "../../components/ui";
+import { Button, Field, FormModal, MoneyInput, RemoveButton, Select } from "../../components/ui";
 import { useForm } from "../../hooks/useForm";
-import { N, dateInMonth, dayOfDate, defaultDateIn, firstMonth, fmt, instType, mShort, monthOfDate, numOr, ordinal, uid } from "../../domain";
+import { N, PAY_DAYS, addDays, dateInMonth, dayOfDate, defaultDateIn, firstMonth, fmt, instType, mShort, monthOfDate, numOr, ordinal, uid } from "../../domain";
 import { validateAmount, validateDate, validateName } from "../../lib/validation";
 import { bankInfo, cardLogoIds, networkInfo } from "../../lib/banks";
 import {
-  BankField, DateField, InstallmentFields, LogoField, MoneyField, NameField, PaidHowField, PaymentMethodField, TextField,
+  BankField, CountField, DateField, InstallmentFields, LogoField, MoneyField, NameField, PaidHowField, PaymentMethodField, TextField,
   decodeVia, defaultVia, encodeVia, maxDate, minDateFor,
 } from "./fields";
 
@@ -56,20 +56,32 @@ export function WalletModal({ plan, item, onSave, onClose, onDelete }) {
 }
 
 /* ---------------- card ---------------- */
+/** "Pay by the 10th of the next month" — from a statement day and the days to pay. */
+const payByHint = (v) => {
+  const S = Math.min(31, Math.round(numOr(v.statementDay))), n = numOr(v.payDays) >= 1 ? Math.round(numOr(v.payDays)) : PAY_DAYS;
+  const due = addDays("2026-01-" + String(Math.min(S, 31)).padStart(2, "0"), n); // a 31-day month as the example
+  const later = monthOfDate(due) === "2026-01" ? "same month" : "next month";
+  return `Leave empty for ${PAY_DAYS}. Statement on the ${ordinal(S)} → pay by about the ${ordinal(dayOfDate(due))} of the ${later}.`;
+};
 export function CardModal({ plan, item, onSave, onClose, onDelete }) {
   const form = useForm(
     { name: str(item?.name), bank: item ? item.bank || "" : plan.banks[0]?.id || "", note: str(item?.note), issuer: str(item?.issuer), network: str(item?.network),
-      limit: str(item?.limit ?? ""), dueDay: str(item?.dueDay ?? "") },
+      limit: str(item?.limit ?? ""), statementDay: str(item?.statementDay ?? ""), payDays: str(item?.payDays ?? ""), dueDay: str(item?.dueDay ?? "") },
     (v) => ({
       name: validateName(v.name),
       limit: validateAmount(v.limit, { required: false, label: "Credit limit" }),
+      statementDay: validateAmount(v.statementDay, { required: false, positive: true, integer: true, max: 31, label: "Day" }),
+      payDays: validateAmount(v.payDays, { required: false, positive: true, integer: true, max: 60, label: "Days" }),
       dueDay: validateAmount(v.dueDay, { required: false, positive: true, integer: true, max: 31, label: "Day" }),
     }),
   );
   const save = form.guard((v) => {
     const card = withChoice(withChoice({ ...(item || { id: uid("c") }), name: v.name.trim(), bank: v.bank, note: v.note.trim() }, "issuer", v.issuer), "network", v.network);
     if (numOr(v.limit) > 0) card.limit = numOr(v.limit); else delete card.limit;
-    if (numOr(v.dueDay) >= 1) card.dueDay = Math.round(numOr(v.dueDay)); else delete card.dueDay;
+    const whole = (k) => { if (numOr(v[k]) >= 1) card[k] = Math.round(numOr(v[k])); else delete card[k]; };
+    whole("statementDay");
+    if (card.statementDay) { whole("payDays"); if (card.payDays === PAY_DAYS) delete card.payDays; delete card.dueDay; } // pay-by follows the statement
+    else { whole("dueDay"); delete card.payDays; }
     return onSave(card);
   });
   return (
@@ -86,7 +98,10 @@ export function CardModal({ plan, item, onSave, onClose, onDelete }) {
           : "The bill is kept on the card and paid from whichever bank you choose — but no bank's balance plans for it ahead."} />
       <div className="form-grid">
         <MoneyField form={form} name="limit" label="Credit limit" hint="Optional — shows what's still available." />
-        <MoneyField form={form} name="dueDay" label="Pay by (day of month)" hint="Optional — e.g. 25 for the 25th." />
+        <CountField form={form} name="statementDay" label="Statement date (day of month)" hint="Optional — charges after it go on the next statement." />
+        {numOr(form.values.statementDay) >= 1
+          ? <CountField form={form} name="payDays" label="Days to pay after the statement" placeholder={String(PAY_DAYS)} hint={payByHint(form.values)} />
+          : <CountField form={form} name="dueDay" label="Pay by (day of month)" hint="Optional — e.g. 25 for the 25th. Set a statement date instead to work it out." />}
       </div>
       <TextField form={form} name="note" label="Note" placeholder="e.g. statement date 20th" />
     </FormModal>
@@ -132,8 +147,8 @@ export function IncomeModal({ plan, item, onSave, onClose, onDelete }) {
             </Select>
           </Field>
           <Field label={ix === 0 ? "Amount" : undefined}>
-            <input className="input n" inputMode="decimal" value={sp.amount} placeholder="0" aria-label={"Portion " + (ix + 1) + " amount"}
-              onChange={(e) => setSplit(ix, { amount: e.target.value })} />
+            <MoneyInput value={sp.amount} placeholder="0.00" aria-label={"Portion " + (ix + 1) + " amount"}
+              onChange={(v) => setSplit(ix, { amount: v })} />
           </Field>
           <RemoveButton label="Remove portion" onClick={() => form.set("splits", splits.filter((_, i) => i !== ix))} />
         </div>
@@ -198,7 +213,9 @@ export const installmentDefaults = (plan, startMonth, item) => ({
   mode: item?.mode || "term",
   total: str(item?.total ?? ""),
   months: str(item?.months ?? 12),
-  monthly: str(item?.monthly ?? ""),
+  // a fixed-term plan stores the total; show its monthly slice alongside
+  monthly: item?.mode === "term" && N(item.total) > 0 && N(item.months) > 0 ? (Math.round((item.total / item.months) * 100) / 100).toFixed(2) : str(item?.monthly ?? ""),
+  lead: "total",
   prepaid: str(item?.prepaid ?? ""),
   date: item?.startMonth ? dateInMonth(item.startMonth, item.day) : defaultDateIn(startMonth || firstMonth(plan)),
   via: item ? encodeVia(item.via) : defaultVia(plan),
@@ -250,7 +267,7 @@ export const describe = {
     const { issuer, network } = cardLogoIds(plan, c);
     const kind = [bankInfo(issuer)?.name, networkInfo(network)?.name].filter(Boolean).join(" ");
     return { sub: (kind ? kind + " · " : "") + "Billed to " + ((plan.banks.find((b) => b.id === c.bank) || {}).name || "no bank")
-      + (c.dueDay ? " · pay by " + ordinal(c.dueDay) : "") + (c.note ? " · " + c.note : ""), amount: N(c.limit) > 0 ? "limit " + fmt(c.limit) : "" };
+      + (c.statementDay ? " · statement " + ordinal(c.statementDay) : c.dueDay ? " · pay by " + ordinal(c.dueDay) : "") + (c.note ? " · " + c.note : ""), amount: N(c.limit) > 0 ? "limit " + fmt(c.limit) : "" };
   },
   templates: (plan, t, viaLabel) => ({
     sub: (t.flow === "move" ? viaLabel(plan, t.via) + " → " + ((plan.banks.find((b) => b.id === t.to) || {}).name || "—") : (t.flow === "in" ? "Receive · " : "") + viaLabel(plan, t.via))

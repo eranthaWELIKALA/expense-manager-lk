@@ -50,3 +50,10 @@ export const dateInMonth = (mk, day) => {
   const last = new Date(y, m, 0).getDate();
   return mk + "-" + pad2(Math.min(Math.max(1, day || 1), last));
 };
+
+/** The ISO date `n` days after `s`. */
+export const addDays = (s, n) => {
+  const [y, m, d] = String(s).split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + n));
+  return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`;
+};
