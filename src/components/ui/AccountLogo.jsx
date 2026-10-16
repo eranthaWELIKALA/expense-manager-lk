@@ -31,3 +31,19 @@ export function AccountLogo({ kind = "bank", logo, network, name, size = "md", c
     </span>
   );
 }
+
+/**
+ * Several account icons overlapping (an item that goes through more than one bank or card).
+ * logos: [{kind, logo, network, name}]; past `max`, the rest show as "+N".
+ */
+export function AccountLogos({ logos, max = 3, size = "md" }) {
+  if (logos.length <= 1) return <AccountLogo {...(logos[0] || {})} size={size} />;
+  const shown = logos.slice(0, logos.length > max ? max - 1 : max);
+  const more = logos.length - shown.length;
+  return (
+    <span className={cx("alogos", size === "lg" && "lg")} aria-hidden title={logos.map((l) => l.name).filter(Boolean).join(", ")}>
+      {shown.map((l, i) => <AccountLogo key={i} {...l} size={size} />)}
+      {more > 0 && <span className={cx("alogo", size === "lg" && "lg")}><span className="alogo-tile alogo-more">+{more}</span></span>}
+    </span>
+  );
+}

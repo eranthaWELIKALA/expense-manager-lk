@@ -263,4 +263,9 @@
   box-shadow:0 0 0 2px var(--card);display:grid;place-items:center;overflow:hidden}
 .alogo-net img{width:82%;height:82%;object-fit:contain}
 .alogo-net.fill img{width:100%;height:100%;object-fit:cover}
+.alogos{display:inline-flex;align-items:center;flex:none}
+.alogos>.alogo+.alogo{margin-left:-14px}
+.alogos>.alogo .alogo-tile{box-shadow:0 0 0 2px var(--card)}
+.alogos .alogo-net{display:none}
+.alogo-more{background:var(--paper);color:var(--ink2);font-size:11px;font-weight:700}
 .alogo.lg .alogo-net{width:28px;height:18px;right:-8px;bottom:-6px;border-radius:5px}
