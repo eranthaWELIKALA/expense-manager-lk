@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Button, EmptyState, Modal, MoneyInput } from "../../components/ui";
-import { dayMonthLabel, fmt, lines, mLabel, mShort, nextM, parseAmount } from "../../domain";
+import { dayMonthLabel, fmt, lines, mLabel, mShort, nextM, parseAmount, statementName } from "../../domain";
 
 /** Confirm moving into next month, with optional opening-balance corrections. */
 export function RollDialog({ plan, monthKey, month, onClose, onConfirm }) {
@@ -8,7 +8,7 @@ export function RollDialog({ plan, monthKey, month, onClose, onConfirm }) {
   const [adj, setAdj] = useState({});
   // card statements whose bill falls next month
   const bills = lines(plan, nk).filter((l) => l.origin === "bill" && Number(l.plan) > 0.005)
-    .map((l) => ({ o: plan.cards.find((c) => "b:" + c.id === l.key) || { id: l.key, name: l.label }, due: l.plan, date: l.date }));
+    .map((l) => ({ o: plan.cards.find((c) => "b:" + c.id === l.key) || { id: l.key, name: l.label }, due: l.plan, date: l.date, cycle: l.cycle }));
   const bankName = (id) => (plan.banks.find((b) => b.id === id) || {}).name;
   const balances = [...month.banks.map((x) => ({ ...x, k: "bank" })), ...month.wallets.map((x) => ({ ...x, k: "cash" }))];
 
@@ -45,7 +45,7 @@ export function RollDialog({ plan, monthKey, month, onClose, onConfirm }) {
       {bills.length === 0 && <EmptyState>No card charges to bill forward.</EmptyState>}
       {bills.map((x) => (
         <div className="crry" key={x.o.id}>
-          <div className="nm">{x.o.name}<small>debits {bankName(x.o.bank)}{x.date ? " · due " + dayMonthLabel(x.date) : ""}</small></div>
+          <div className="nm">{x.o.name}<small>{x.cycle ? statementName(x.cycle) + " · " : ""}debits {bankName(x.o.bank)}{x.date ? " · due " + dayMonthLabel(x.date) : ""}</small></div>
           <span className="n" style={{ fontSize: 13, fontWeight: 600 }}>{fmt(x.due)}</span>
         </div>
       ))}

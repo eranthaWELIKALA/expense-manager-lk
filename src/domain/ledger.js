@@ -11,7 +11,7 @@
    object, so results are memoised per data object via WeakMap.
    ============================================================ */
 
-import { prevM, nextM, mShort, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, dateInMonth, todayISO, currentMonthKey, addDays, monthOfDate } from "./months";
+import { MONTH_NAMES, prevM, nextM, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, dateInMonth, todayISO, currentMonthKey, addDays, monthOfDate } from "./months";
 import { N, fmt } from "./format";
 import { instFor, instPaid, instType } from "./installments";
 import { versionAt } from "./versions";
@@ -131,7 +131,7 @@ function computeLines(d, key, withBills) {
       const last = due[due.length - 1];
       const day = last.due ? dayOfDate(last.due) : null;
       push({ key: "b:" + c.id, label: c.name + " bill", kind: "bank", id: c.bank, flow: "out", plan: tot, origin: "bill",
-        tag: joinTags(stmtDay(c) ? "statement " + dayMonthLabel(last.statement) : mShort(last.cycle), day ? "due " + ordinal(day) : null),
+        tag: joinTags(statementName(last.cycle), day ? "due " + ordinal(day) : null), cycle: last.cycle,
         locked: true, day, ...(last.due ? { date: last.due } : {}) });
     });
   }
@@ -193,26 +193,32 @@ function computeLines(d, key, withBills) {
 }
 
 /* ---------------- card statements ----------------
-   A card's statement cycle is named by the month its statement is issued in. With a statement day S,
-   cycle M holds the card's lines dated up to S in M plus those after S in the month before; the bill
-   is due `payDays` (default 21) after the statement. With no statement day, a cycle is the calendar
-   month and its bill falls next month (on `dueDay`, if set). */
+   A card's statement cycle is named by the month holding most of its days. With a statement day S,
+   the cycle runs from the day after one statement to the next: with S up to the 15th it's named by
+   the month it starts in (9 Jun – 8 Jul is the Jun statement), later than that by the month it ends
+   in (26 May – 25 Jun is the Jun statement). A month's installment slice goes on that month's
+   statement whatever its day. The bill is due `payDays` (default 21) after the statement. With no
+   statement day, a cycle is the calendar month and its bill falls next month (on `dueDay`, if set). */
 
 export const PAY_DAYS = 21;
 export const stmtDay = (c) => (N(c && c.statementDay) >= 1 ? Math.min(31, Math.round(N(c.statementDay))) : null);
 export const payDays = (c) => (N(c && c.payDays) >= 1 ? Math.round(N(c.payDays)) : PAY_DAYS);
+/** The month cycle M's statement is issued in: the next one when S is early in the month. */
+const stmtMonth = (c, M) => (stmtDay(c) <= 15 ? nextM(M) : M);
+/** "Jun statement" — what a cycle is called. */
+export const statementName = (M) => MONTH_NAMES[+String(M).slice(5, 7) - 1] + " statement";
 
 /** Cycle M's statement date and pay-by date (either may be null). */
 export function cardCycleDates(c, M) {
   const S = stmtDay(c);
-  if (S) { const statement = dateInMonth(M, S); return { cycle: M, statement, due: addDays(statement, payDays(c)) }; }
+  if (S) { const statement = dateInMonth(stmtMonth(c, M), S); return { cycle: M, statement, due: addDays(statement, payDays(c)) }; }
   return { cycle: M, statement: null, due: N(c.dueDay) >= 1 ? dateInMonth(nextM(M), Math.min(31, Math.round(N(c.dueDay)))) : null };
 }
 
 /** The statement cycles whose bill falls in month `key` (usually one). */
 export function billsIn(d, c, key) {
   if (!stmtDay(c)) return [cardCycleDates(c, prevM(key))];
-  let M = nextM(key);
+  let M = nextM(key); // a cycle's bill is never due before the month it's named by
   const out = [];
   for (let i = 0; i < 4; i++, M = prevM(M)) { const b = cardCycleDates(c, M); if (monthOfDate(b.due) === key) out.unshift(b); }
   return out;
@@ -230,13 +236,17 @@ function cardCycle(d, M, cardId, depth = 0) {
   const zero = { charged: 0, paidIn: 0, prevDue: 0, toPrevBill: 0, due: 0 };
   const card = (d.cards || []).find((c) => c.id === cardId) || {};
   const S = stmtDay(card);
-  if (!d.months[M] && !(S && d.months[prevM(M)])) return zero;
+  const SM = S ? stmtMonth(card, M) : M; // the statement month
+  if (!d.months[M] && !(S && (d.months[SM] || d.months[prevM(SM)]))) return zero;
   let m = CM.get(d); if (!m) { m = new Map(); CM.set(d, m); }
   const mk = M + "|" + cardId;
   if (m.has(mk)) return m.get(mk);
   m.set(mk, zero); // guards against re-entry
   const on = (key) => (d.months[key] ? linesNoBills(d, key).filter((l) => l.kind === "card" && l.id === cardId) : []);
-  const ls = S ? [...on(M).filter((l) => dayOfLine(l) <= S), ...on(prevM(M)).filter((l) => dayOfLine(l) > S)] : on(M);
+  const inst = (l) => l.origin === "installment"; // bound to its month, not its day
+  const ls = S
+    ? [...on(SM).filter((l) => !inst(l) && dayOfLine(l) <= S), ...on(prevM(SM)).filter((l) => !inst(l) && dayOfLine(l) > S), ...on(M).filter(inst)]
+    : on(M);
   const charged = ls.filter((l) => l.flow !== "in").reduce((s, l) => s + val(l), 0);
   const paidIn = ls.filter((l) => l.flow === "in").reduce((s, l) => s + val(l), 0);
   const prevDue = !card.bank && depth < MAX_CHAIN ? cardCycle(d, prevM(M), cardId, depth + 1).due : 0;
@@ -343,7 +353,7 @@ function doMonth(d, key, depth) {
       const settledBy = dues.reduce((s, b) => s + cardCycle(d, nextM(b.cycle), c.id).toPrevBill, 0);
       if (amount > 0.005) bill = { amount, left: Math.max(0, amount - settledBy), date: last.due, done: amount - settledBy < 0.005 };
     }
-    if (bill) bill.statement = last.statement;
+    if (bill) Object.assign(bill, { statement: last.statement, cycle: last.cycle });
     // the next statement still building up (not the one due this month)
     const upcoming = cardCycleDates(c, dues.some((b) => b.cycle === key) ? nextM(key) : key);
     const cm = cardCycle(d, upcoming.cycle, c.id, depth);

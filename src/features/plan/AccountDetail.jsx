@@ -1,6 +1,6 @@
 import React from "react";
 import { AccountLogo, Badge, Button, EmptyState, cx } from "../../components/ui";
-import { dayMonthLabel, fmt, ordinal, payDays, stmtDay, val } from "../../domain";
+import { dayMonthLabel, fmt, ordinal, payDays, statementName, stmtDay, val } from "../../domain";
 import { LineHeader, LineRow } from "./LineRow";
 import { isOpen } from "./accounts";
 
@@ -51,10 +51,10 @@ export function AccountDetail({ account, openRows, autoOpen = 0, hideAuto = fals
         <Stat key="o" label="Balance" value={fmt(a.balance)} tone={a.overLimit ? "neg" : undefined} />,
         ...(a.instAhead > 0.005 ? [<Stat key="ia" label="Of which installments to come" value={fmt(a.instAhead)} />] : []),
         ...(a.limit ? [<Stat key="l" label={"Available of " + fmt(a.limit)} value={fmt(a.available)} tone={a.overLimit ? "neg" : "pos"} />] : []),
-        ...(a.bill && a.bill.amount > 0.005 ? [<Stat key="d" label={a.bill.date ? "Pay by " + dayMonthLabel(a.bill.date) : "Bill this month"}
+        ...(a.bill && a.bill.amount > 0.005 ? [<Stat key="d" label={(a.bill.cycle ? statementName(a.bill.cycle) + " · " : "") + (a.bill.date ? "pay by " + dayMonthLabel(a.bill.date) : "due this month")}
           value={a.bill.left > 0.005 ? fmt(a.bill.left) : "Paid"} tone={a.late ? "neg" : a.bill.left > 0.005 ? undefined : "pos"} />] : []),
         <Stat key="c" label="Charged" value={fmt(a.charged)} />,
-        <Stat key="b" label={a.next && a.next.statement ? "Statement " + dayMonthLabel(a.next.statement) : "To bill in " + nextLabel} value={fmt(a.due)} />,
+        <Stat key="b" label={a.next && a.next.statement ? statementName(a.next.cycle) + " · on " + dayMonthLabel(a.next.statement) : "To bill in " + nextLabel} value={fmt(a.due)} />,
       ]
       : [
         <Stat key="o" label="Brought forward" value={fmt(a.opening)} />,

@@ -61,7 +61,8 @@ const payByHint = (v) => {
   const S = Math.min(31, Math.round(numOr(v.statementDay))), n = numOr(v.payDays) >= 1 ? Math.round(numOr(v.payDays)) : PAY_DAYS;
   const due = addDays("2026-01-" + String(Math.min(S, 31)).padStart(2, "0"), n); // a 31-day month as the example
   const later = monthOfDate(due) === "2026-01" ? "same month" : "next month";
-  return `Leave empty for ${PAY_DAYS}. Statement on the ${ordinal(S)} → pay by about the ${ordinal(dayOfDate(due))} of the ${later}.`;
+  const span = S <= 15 ? `${S + 1} Jun – ${S} Jul is the Jun statement` : S === 31 ? "each calendar month is its own statement" : `${S + 1} May – ${S} Jun is the Jun statement`;
+  return `Leave empty for ${PAY_DAYS}. Statement on the ${ordinal(S)} → ${span}; pay by about the ${ordinal(dayOfDate(due))} of the ${later}. Installments go on their own month's statement.`;
 };
 export function CardModal({ plan, item, onSave, onClose, onDelete }) {
   const form = useForm(

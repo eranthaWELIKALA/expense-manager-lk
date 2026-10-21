@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { AccountLogo, cx } from "../../components/ui";
-import { dayMonthLabel, fmt } from "../../domain";
+import { dayMonthLabel, fmt, statementName } from "../../domain";
 
 const status = (a) => {
   if (a.short) return { text: "goes short", dot: "short" };
   if (a.kind === "card") {
     if (a.late) return { text: "bill overdue", dot: "short" };
     if (a.bill && a.bill.left > 0.005) return { text: "pay " + fmt(a.bill.left) + (a.bill.date ? " by " + dayMonthLabel(a.bill.date) : ""), dot: "open" };
-    const next = a.next && a.next.statement ? "statement " + dayMonthLabel(a.next.statement) : "bills next month";
+    const next = a.next && a.next.statement ? statementName(a.next.cycle) + " on " + dayMonthLabel(a.next.statement) : "bills next month";
     return { text: a.open ? a.open + " open" : a.due > 0.005 ? next : "no charges", dot: a.open ? "open" : "ok" };
   }
   return { text: a.open ? a.open + " open" : "all settled", dot: a.open ? "open" : "ok" };

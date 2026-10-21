@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDays, addOneOff, addTransfer, billsIn, blankMonth, computeMonth, currentMonthKey, lines, makeReal, markPaid, nextM, normalizePlan, payCard, prevM, removeLine, withoutMaybes,
+  addDays, addOneOff, addTransfer, billsIn, cardCycleDates, statementName, blankMonth, computeMonth, currentMonthKey, lines, makeReal, markPaid, nextM, normalizePlan, payCard, prevM, removeLine, withoutMaybes,
 } from "./index";
 
 /* Aug: card c1 is charged Food 300 + TV 100 = 400, billed to b1 in Sep. */
@@ -153,14 +153,29 @@ describe("card statement cycles", () => {
     const d = late({ statementDay: 20 });
     const stmt = P0 + "-20", due = addDays(stmt, 21);
     expect(billsIn(d, d.cards[0], N0).map((b) => b.cycle)).toEqual([P0]);
-    expect(lines(d, N0).find((l) => l.key === "b:c1")).toMatchObject({ plan: 400, date: due, tag: expect.stringMatching(/^statement 20 /) });
+    expect(lines(d, N0).find((l) => l.key === "b:c1")).toMatchObject({ plan: 400, date: due, cycle: P0, tag: expect.stringMatching(/ statement · due /) });
     expect(card(computeMonth(d, N0), "c1")).toMatchObject({ next: { cycle: N0 }, due: 450 }); // this month's 400 + the late 50
   });
 
   it("can fall due in the statement's own month", () => {
     const d = late({ statementDay: 5, payDays: 21 });
-    expect(billsIn(d, d.cards[0], N0).map((b) => b.cycle)).toEqual([N0]);
-    expect(lines(d, N0).find((l) => l.key === "b:c1")).toMatchObject({ plan: 450, date: N0 + "-26" }); // 400 by the 5th + the late 50
+    expect(billsIn(d, d.cards[0], N0).map((b) => b.cycle)).toEqual([P0]); // 6th last month – 5th this month: last month's statement
+    expect(lines(d, N0).find((l) => l.key === "b:c1")).toMatchObject({ plan: 450, date: N0 + "-26" }); // Food by the 5th + the late 50 + last month's TV
+  });
+
+  it("an early statement day names the cycle by the month it starts in (9 Jun – 8 Jul is the Jun statement)", () => {
+    const d = live({ statementDay: 8 });
+    expect(cardCycleDates(d.cards[0], P0)).toMatchObject({ cycle: P0, statement: N0 + "-08", due: N0 + "-29" });
+    expect(statementName("2026-06")).toBe("Jun statement");
+    expect(card(computeMonth(d, N0), "c1")).toMatchObject({ bill: { cycle: P0 }, next: { cycle: N0 } });
+  });
+
+  it("installments go on their own month's statement, whatever their day", () => {
+    const d = live({ statementDay: 8 });
+    d.templates = [];
+    d.installments = [{ ...d.installments[0], day: 3 }]; // the 3rd is before the statement, but it's still this month's slice
+    expect(lines(d, N0).find((l) => l.key === "b:c1")).toMatchObject({ plan: 100, cycle: P0 });
+    expect(card(computeMonth(d, N0), "c1").due).toBe(100); // this month's slice, on this month's statement
   });
 });
 
