@@ -45,10 +45,11 @@ async function cacheFirst(req, cacheName) {
   return (await caches.match(req)) || put(cacheName, req, await fetch(req));
 }
 
-/* Logos, icons, fonts: serve what we have, refresh in the background. */
+/* Logos, icons, fonts: serve what we have, refresh in the background.
+   Offline with nothing cached: a network error (respondWith needs a Response, never undefined). */
 async function staleWhileRevalidate(req, cacheName) {
   const hit = await caches.match(req);
-  const fresh = fetch(req).then((res) => put(cacheName, req, res)).catch(() => hit);
+  const fresh = fetch(req).then((res) => put(cacheName, req, res)).catch(() => Response.error());
   return hit || fresh;
 }
 

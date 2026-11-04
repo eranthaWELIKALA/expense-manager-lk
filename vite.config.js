@@ -26,14 +26,15 @@ function serviceWorker() {
  * Production-only Content-Security-Policy as a <meta> tag, for hosts that
  * can't set response headers (GitHub Pages). Dev is skipped because Vite's
  * HMR injects inline scripts. Hosts that support headers should send it as
- * a header instead (frame-ancestors only works there).
+ * a header instead (frame-ancestors only works there). Inline scripts in
+ * index.html (the pre-paint theme script) are allowed by their hash.
  */
 function cspMeta(env) {
   const supabase = env.VITE_SUPABASE_URL ? new URL(env.VITE_SUPABASE_URL) : null;
   const connect = ["'self'", supabase && supabase.origin, supabase && `wss://${supabase.host}`].filter(Boolean).join(' ');
-  const policy = [
+  const policy = (inlineScripts) => [
     "default-src 'self'",
-    "script-src 'self'",
+    ["script-src 'self'", ...inlineScripts.map((s) => `'sha256-${createHash('sha256').update(s).digest('base64')}'`)].join(' '),
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // inline style attributes
     'font-src https://fonts.gstatic.com',
     `connect-src ${connect}`,
@@ -47,7 +48,10 @@ function cspMeta(env) {
   return {
     name: 'csp-meta',
     apply: 'build',
-    transformIndexHtml: () => [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: policy }, injectTo: 'head-prepend' }],
+    transformIndexHtml(html) {
+      const inline = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+      return [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: policy(inline) }, injectTo: 'head-prepend' }];
+    },
   };
 }
 
