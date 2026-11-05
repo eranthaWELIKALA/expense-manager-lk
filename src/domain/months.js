@@ -32,9 +32,6 @@ export const isDateISO = (s) => {
 export const monthOfDate = (s) => String(s).slice(0, 7);
 export const dayOfDate = (s) => +String(s).slice(8, 10);
 
-/** Today when `mk` is the current month, otherwise the 1st of `mk`. */
-export const defaultDateIn = (mk) => (mk === currentMonthKey() ? todayISO() : mk + "-01");
-
 /** "12 Oct" */
 export const dayMonthLabel = (s) => dayOfDate(s) + " " + MONTH_NAMES[+String(s).slice(5, 7) - 1];
 
@@ -57,3 +54,35 @@ export const addDays = (s, n) => {
   const t = new Date(Date.UTC(y, m - 1, d + n));
   return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`;
 };
+
+/* ---------------- months that don't follow the calendar ----------------
+   A month can end on a `cutoff` day instead of the last of the month: a card's statement day, or the
+   day before the plan's month starts. It runs from the day after one cutoff to the next and is named
+   by the month holding most of its days: with a cutoff up to the 15th, the month it starts in
+   (9 Jun – 8 Jul is Jun); later, the month it ends in (26 May – 25 Jun is Jun). A cutoff past a month's
+   end falls on its last day. Cutoff 0 is the calendar month. */
+
+/** The month date `s` counts in, for months ending on day `cutoff`. */
+export function periodOf(s, cutoff = 0) {
+  const mk = monthOfDate(s);
+  if (!(cutoff >= 1)) return mk;
+  const upToCutoff = s <= dateInMonth(mk, cutoff);
+  if (cutoff <= 15) return upToCutoff ? prevM(mk) : mk;
+  return upToCutoff ? mk : nextM(mk);
+}
+
+/** First and last day of month `mk`, for months ending on day `cutoff`. */
+export function periodRange(mk, cutoff = 0) {
+  if (!(cutoff >= 1)) return { from: mk + "-01", to: dateInMonth(mk, 31) };
+  const ends = cutoff <= 15 ? nextM(mk) : mk;
+  return { from: addDays(dateInMonth(prevM(ends), cutoff), 1), to: dateInMonth(ends, cutoff) };
+}
+
+/** The date in month `mk` that falls on day-of-month `day` (a due day), for months ending on day `cutoff`. */
+export function dateInPeriod(mk, cutoff, day) {
+  const { from, to } = periodRange(mk, cutoff);
+  const a = dateInMonth(monthOfDate(from), day);
+  if (a >= from && a <= to) return a;
+  const b = dateInMonth(monthOfDate(to), day);
+  return b <= to ? b : to;
+}

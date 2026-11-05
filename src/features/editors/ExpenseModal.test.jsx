@@ -106,3 +106,50 @@ describe("NewExpenseModal — installment", () => {
     expect(onSave.mock.calls[0][0].item).not.toHaveProperty("monthly");
   });
 });
+
+describe("RecordPaymentModal — the month a payment counts in", () => {
+  /* Months start on the 5th; Amex has a statement on the 20th. */
+  const shifted = {
+    ...plan, monthStart: 5, active: "2026-09",
+    wallets: [{ id: "w1", name: "Cash", from: "b1", amount: 0 }],
+    cards: [{ id: "c1", name: "Visa", bank: "b1" }, { id: "c2", name: "Amex", bank: "b1", statementDay: 20 }],
+    months: { "2026-08": blankMonth(), "2026-09": blankMonth() },
+  };
+  const record = (name, via, date) => {
+    const onSave = vi.fn();
+    render(<RecordPaymentModal plan={shifted} monthKey="2026-09" onSave={onSave} onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: date } });
+    fireEvent.change(screen.getByLabelText("Paid with"), { target: { value: via } });
+    fireEvent.change(screen.getByRole("combobox", { name: "What for" }), { target: { value: name } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "200" } });
+    return onSave;
+  };
+
+  it("cash spent before the month starts counts in the month before", async () => {
+    const onSave = record("Bread", "cash|w1", "2026-09-03");
+    expect(screen.getByText("Your months start on the 5th, so it counts in Aug 2026.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Record payment" }));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0]).toMatchObject({ type: "once", monthKey: "2026-08", item: { kind: "cash", date: "2026-09-03" } });
+  });
+
+  it("a card charge counts in the month of its statement", async () => {
+    const onSave = record("Shoes", "card|c2", "2026-08-25");
+    expect(screen.getByText("On the Sep statement, so it counts in Sep 2026.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Record payment" }));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0]).toMatchObject({ type: "once", monthKey: "2026-09" });
+  });
+
+  it("finds the bill of the month the date counts in", async () => {
+    const onSave = vi.fn();
+    render(<RecordPaymentModal plan={shifted} monthKey="2026-09" onSave={onSave} onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-03" } });
+    const box = screen.getByRole("combobox", { name: "What for" });
+    fireEvent.change(box, { target: { value: "rent" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Mark paid" }));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0]).toMatchObject({ type: "pay", monthKey: "2026-08", line: { key: "t:t1" } });
+  });
+});

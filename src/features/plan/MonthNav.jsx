@@ -1,12 +1,13 @@
 import React, { useEffect, useRef } from "react";
 import { Button, Menu, MenuDivider, MenuItem, MenuLabel } from "../../components/ui";
-import { mLabel, mShort, nextM, prevM } from "../../domain";
+import { dayMonthLabel, mLabel, mShort, nextM, prevM } from "../../domain";
 
 /**
  * Month rail: prev/next, a pill per opened month, record payment, new expense and the "more" menu.
+ * `range` ({from, to}): the month's first and last day, shown when months don't follow the calendar.
  * onAction(name): "income" | "maybe" | "edit:templates" | "edit:incomes" | "edit:installments" | "undo" | "history" | "move"
  */
-export function MonthNav({ value, items, openedMonths, onSelect, onRecord, onNewExpense, onTransfer, onAction, canEdit }) {
+export function MonthNav({ value, range, items, openedMonths, onSelect, onRecord, onNewExpense, onTransfer, onAction, canEdit }) {
   const pillsRef = useRef(null);
   useEffect(() => { // keep the chosen month in view
     const on = pillsRef.current?.querySelector(".mpill.on");
@@ -17,7 +18,10 @@ export function MonthNav({ value, items, openedMonths, onSelect, onRecord, onNew
     <div className="mrail">
       <div className="mrail-nav">
         <button type="button" className="mnav" onClick={() => onSelect(prevM(value))} aria-label="Previous month">‹</button>
-        <div className="mnow" aria-live="polite">{mLabel(value)}</div>
+        <div className="mnow" aria-live="polite">
+          {mLabel(value)}
+          {range && <small>{dayMonthLabel(range.from)} – {dayMonthLabel(range.to)}</small>}
+        </div>
         <button type="button" className="mnav" onClick={() => onSelect(nextM(value))} aria-label="Next month">›</button>
         <div className="mpills" ref={pillsRef}>
           {items.map((key) => (

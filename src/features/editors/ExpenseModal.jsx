@@ -2,16 +2,28 @@ import React from "react";
 import { Combobox, Field, FormModal, RemoveButton, Segmented } from "../../components/ui";
 import { useForm } from "../../hooks/useForm";
 import {
-  dayMonthLabel, dayOfDate, defaultDateIn, firstMonth, fmt, instType, isDateISO, isPayable, lines, mLabel, monthOfDate, numOr, todayISO, uid, viaLabel,
+  dayMonthLabel, dayOfDate, defaultDateIn, entryMonth, firstMonth, fmt, instType, isDateISO, isPayable, lines, mLabel, monthFor, monthOfDate, monthRange,
+  nextM, numOr, prevM, todayISO, uid, viaLabel,
 } from "../../domain";
 import { validateAmount, validateDate, validateName } from "../../lib/validation";
-import { DateField, InstallmentFields, MoneyField, NameField, PaidHowField, PaymentMethodField, TextField, decodeVia, defaultVia, maxDate, minDateFor } from "./fields";
+import {
+  DateField, InstallmentFields, MoneyField, NameField, PaidHowField, PaymentMethodField, TextField, countsIn, decodeVia, defaultVia, maxDate, minDateFor,
+} from "./fields";
 import { INST_PLACEHOLDER, installmentDefaults, installmentFromForm, validateInstallment } from "./itemModals";
 
-/** Payments due in the month of `date` that can be recorded as paid. */
-const payableIn = (plan, date) => (isDateISO(date) ? lines(plan, monthOfDate(date)).filter(isPayable) : []);
+/**
+ * Payments that can be recorded as paid on `date`: each account's lines in the month that date counts
+ * in for it (a card's statement month, the plan's month for the rest). Each carries its `month`.
+ */
+const payableOn = (plan, date) => {
+  if (!isDateISO(date)) return [];
+  const mk = monthOfDate(date), seen = new Set();
+  return [prevM(mk), mk, nextM(mk)]
+    .flatMap((k) => lines(plan, k).filter((l) => isPayable(l) && entryMonth(plan, l, date) === k).map((l) => ({ ...l, month: k })))
+    .filter((l) => !seen.has(l.key) && seen.add(l.key));
+};
 
-const dateRule = (plan) => ({ min: minDateFor(firstMonth(plan)), max: maxDate(), minLabel: mLabel(firstMonth(plan)) + " (when this plan starts)" });
+const dateRule = (plan) => ({ min: minDateFor(plan), max: maxDate(), minLabel: mLabel(firstMonth(plan)) + " (when this plan starts)" });
 
 /** Already-paid parts of a line, each removable. */
 function PartsSoFar({ plan, line, onRemove }) {
@@ -42,34 +54,39 @@ function PartsSoFar({ plan, line, onRemove }) {
  * (scheduled if the date is ahead).
  * `fixedLine` skips the search (ticking a line on the Month page).
  *
+ * A payment is recorded in the month its date counts in for the account it's paid from.
+ *
  * onSave({type: "pay", monthKey, line, payment: {amount, via, date, settle, note?}})
  *      | ({type: "once", monthKey, item: {name, amount, kind, targetId, date, paid}})
- * onRemovePart(line, part)? — remove an already-recorded part.
+ * onRemovePart(line, part)? — remove an already-recorded part (line.month: its month, when not `monthKey`).
  */
 export function RecordPaymentModal({ plan, monthKey, fixedLine, onSave, onRemovePart, onClose }) {
-  const minDate = minDateFor(firstMonth(plan));
+  const minDate = minDateFor(plan);
   // what's left of a bill, or the whole amount again; a budget's payments vary, so start empty
   const rest = (l) => (l.budget ? "" : String(l.remaining > 0.005 ? l.remaining : l.actual ?? l.plan));
   const form = useForm(
     fixedLine
-      ? { text: fixedLine.label, line: fixedLine.key, amount: rest(fixedLine), via: fixedLine.kind + "|" + fixedLine.id, date: defaultDateIn(monthKey), settle: "", note: "" }
-      : { text: "", line: "", amount: "", via: defaultVia(plan), date: defaultDateIn(monthKey), settle: "", note: "" },
+      ? { text: fixedLine.label, line: fixedLine.key, amount: rest(fixedLine), via: fixedLine.kind + "|" + fixedLine.id, date: defaultDateIn(plan, monthKey, fixedLine), settle: "", note: "" }
+      : { text: "", line: "", amount: "", via: defaultVia(plan), date: defaultDateIn(plan, monthKey), settle: "", note: "" },
     (v) => {
-      const due = payableIn(plan, v.date);
+      const due = payableOn(plan, v.date);
+      const span = fixedLine && monthRange(plan, monthKey, fixedLine);
       return {
         text: validateName(v.text, "What for")
-          || (v.line && !due.some((l) => l.key === v.line) ? `Not due in ${isDateISO(v.date) ? mLabel(monthOfDate(v.date)) : "that month"} — pick again or change the date.` : ""),
+          || (v.line && !due.some((l) => l.key === v.line) ? `Not due in ${isDateISO(v.date) ? mLabel(entryMonth(plan, decodeVia(v.via), v.date)) : "that month"} — pick again or change the date.` : ""),
         amount: validateAmount(v.amount, { positive: true, label: "Amount" }),
         via: v.via ? "" : "Choose how it was paid.",
-        date: validateDate(v.date, dateRule(plan)) || (fixedLine && isDateISO(v.date) && monthOfDate(v.date) !== monthKey ? `Pick a date in ${mLabel(monthKey)}.` : ""),
+        date: validateDate(v.date, dateRule(plan))
+          || (fixedLine && isDateISO(v.date) && entryMonth(plan, fixedLine, v.date) !== monthKey
+            ? `Pick a date in ${mLabel(monthKey)} (${dayMonthLabel(span.from)} – ${dayMonthLabel(span.to)}).` : ""),
       };
     },
   );
   const v = form.values;
-  const due = payableIn(plan, v.date);
+  const due = payableOn(plan, v.date);
   const selected = due.find((l) => l.key === v.line);
   const ahead = isDateISO(v.date) && v.date > todayISO();
-  const mk = isDateISO(v.date) ? monthOfDate(v.date) : monthKey;
+  const mk = selected ? selected.month : isDateISO(v.date) ? entryMonth(plan, decodeVia(v.via), v.date) : monthKey;
   const amount = numOr(v.amount);
   const left = selected ? (selected.remaining > 0.005 ? selected.remaining : Number(selected.actual ?? selected.plan) || 0) : 0;
   const budget = !!(selected && selected.budget);
@@ -91,11 +108,10 @@ export function RecordPaymentModal({ plan, monthKey, fixedLine, onSave, onRemove
   };
 
   const save = form.guard((vals) => {
-    const monthOf = monthOfDate(vals.date);
-    if (selected) return onSave({ type: "pay", monthKey: monthOf, line: selected, payment: { amount: numOr(vals.amount), via: decodeVia(vals.via), date: vals.date, settle: !!settles, ...(budget && vals.note.trim() ? { note: vals.note.trim() } : {}) } });
+    if (selected) return onSave({ type: "pay", monthKey: selected.month, line: selected, payment: { amount: numOr(vals.amount), via: decodeVia(vals.via), date: vals.date, settle: !!settles, ...(budget && vals.note.trim() ? { note: vals.note.trim() } : {}) } });
     const via = decodeVia(vals.via);
     return onSave({
-      type: "once", monthKey: monthOf,
+      type: "once", monthKey: entryMonth(plan, via, vals.date),
       item: { name: vals.text.trim(), amount: numOr(vals.amount), kind: via.kind, targetId: via.id, date: vals.date, paid: vals.date <= todayISO() },
     });
   });
@@ -135,7 +151,8 @@ export function RecordPaymentModal({ plan, monthKey, fixedLine, onSave, onRemove
           ? (selected.over ? `Amount paid · ${fmt(selected.paid - selected.plan)} over budget` : `Amount paid · ${fmt(Math.max(0, selected.plan - spent))} left in budget`)
           : selected ? (selected.paid > 0 && !selected.done ? `Amount paid now · ${fmt(left)} left` : "Amount paid") : "Amount"} />
         <PaymentMethodField plan={plan} form={form} label="Paid with" />
-        <DateField form={form} label="Date" min={minDate} hint={ahead && !selected ? "In the future — saved as scheduled, not paid." : "Its month is where it's recorded."} />
+        <DateField form={form} label="Date" min={minDate}
+          hint={selected ? undefined : [ahead && "In the future — saved as scheduled, not paid.", countsIn(plan, decodeVia(v.via), v.date)].filter(Boolean).join(" ")} />
       </div>
       {budget && <TextField form={form} name="note" label="Note" placeholder="optional — e.g. Keells, new bat" />}
       {selected && (
@@ -168,11 +185,12 @@ const TYPES = [
   { value: "maybe", label: "What if…", hint: "See if it fits a month" },
 ];
 
-function describeStart(v) {
+function describeStart(plan, v) {
   if (!isDateISO(v.date)) return "Pick a date.";
-  if (v.type === "maybe") return `Counted in ${mLabel(monthOfDate(v.date))}'s balances as a what-if, so you can see whether it fits. Keep it or drop it afterwards.`;
-  if (v.type === "monthly" && v.budget === "budget") return `A budget every month from ${mLabel(monthOfDate(v.date))}. Earlier months aren't changed.`;
-  if (v.type === "monthly") return `Every month from ${mLabel(monthOfDate(v.date))}, due on day ${dayOfDate(v.date)}. Earlier months aren't changed.`;
+  const via = decodeVia(v.via);
+  if (v.type === "maybe") return `Counted in ${mLabel(entryMonth(plan, via, v.date))}'s balances as a what-if, so you can see whether it fits. Keep it or drop it afterwards.`;
+  if (v.type === "monthly" && v.budget === "budget") return `A budget every month from ${mLabel(monthFor(plan, via, v.date))}. Earlier months aren't changed.`;
+  if (v.type === "monthly") return `Every month from ${mLabel(monthFor(plan, via, v.date))}, due on day ${dayOfDate(v.date)}. Earlier months aren't changed.`;
   return `First payment ${dayMonthLabel(v.date)} ${monthOfDate(v.date).slice(0, 4)}, then monthly.`;
 }
 
@@ -183,7 +201,7 @@ function describeStart(v) {
  *      | ({type: "maybe", monthKey, item: {name, amount, kind, targetId, date}})
  */
 export function NewExpenseModal({ plan, monthKey, initialType = "monthly", onSave, onClose }) {
-  const minDate = minDateFor(firstMonth(plan));
+  const minDate = minDateFor(plan);
   const form = useForm(
     { type: initialType, amount: "", budget: "one", ...installmentDefaults(plan, monthKey) },
     (v) => (v.type === "installment"
@@ -198,22 +216,22 @@ export function NewExpenseModal({ plan, monthKey, initialType = "monthly", onSav
   const v = form.values;
 
   const save = form.guard((vals) => {
-    if (vals.type === "installment") return onSave({ type: vals.type, item: installmentFromForm(vals) });
+    if (vals.type === "installment") return onSave({ type: vals.type, item: installmentFromForm(plan, vals) });
     if (vals.type === "maybe") {
       const via = decodeVia(vals.via);
-      return onSave({ type: "maybe", monthKey: monthOfDate(vals.date), item: { name: vals.name.trim(), amount: numOr(vals.amount), kind: via.kind, targetId: via.id, date: vals.date } });
+      return onSave({ type: "maybe", monthKey: entryMonth(plan, via, vals.date), item: { name: vals.name.trim(), amount: numOr(vals.amount), kind: via.kind, targetId: via.id, date: vals.date } });
     }
     return onSave({
       type: vals.type,
       item: {
         id: uid("t"), name: vals.name.trim(), amount: numOr(vals.amount), via: decodeVia(vals.via), flow: "out", active: true,
-        startMonth: monthOfDate(vals.date), day: dayOfDate(vals.date), ...(vals.budget === "budget" ? { budget: true } : {}),
+        startMonth: monthFor(plan, decodeVia(vals.via), vals.date), day: dayOfDate(vals.date), ...(vals.budget === "budget" ? { budget: true } : {}),
       },
     });
   });
 
   return (
-    <FormModal title="New expense" description={describeStart(v)} onSubmit={save} onClose={onClose}
+    <FormModal title="New expense" description={describeStart(plan, v)} onSubmit={save} onClose={onClose}
       submitLabel={v.type === "installment" ? "Add " + instType(v.itype).noun : v.type === "maybe" ? "Try it" : "Add expense"}>
       <Segmented label="Expense type" options={TYPES} value={v.type} onChange={(t) => form.set("type", t)} />
       <NameField form={form} label="What for" placeholder={v.type === "installment" ? INST_PLACEHOLDER[instType(v.itype).value] : v.type === "maybe" ? "e.g. New phone" : v.budget === "budget" ? "e.g. Cricket" : "e.g. Electricity"} />
@@ -222,10 +240,10 @@ export function NewExpenseModal({ plan, monthKey, initialType = "monthly", onSav
         {v.type === "monthly" && <MoneyField form={form} label={v.budget === "budget" ? "Budget each month" : "Amount each month"} />}
         {v.type === "monthly" && <DateField form={form} label={v.budget === "budget" ? "Starts" : "First payment"} min={minDate} />}
         {v.type === "maybe" && <MoneyField form={form} label="Amount" />}
-        {v.type === "maybe" && <DateField form={form} label="When" min={minDate} />}
+        {v.type === "maybe" && <DateField form={form} label="When" min={minDate} hint={countsIn(plan, decodeVia(v.via), v.date)} />}
         {v.type === "monthly" && <PaidHowField form={form} />}
       </div>
-      {v.type === "installment" && <InstallmentFields form={form} planStart={firstMonth(plan)} />}
+      {v.type === "installment" && <InstallmentFields form={form} plan={plan} />}
     </FormModal>
   );
 }

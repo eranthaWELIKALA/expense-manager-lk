@@ -2,13 +2,15 @@ import React, { useMemo, useState } from "react";
 import { cx } from "../../components/ui";
 import { useProfile } from "../../contexts/ProfileContext";
 import { useViewMonth } from "../../hooks/useViewMonth";
-import { computeMonth, fmt, mLabel, val } from "../../domain";
+import { computeMonth, fmt, mLabel, monthStartDay, ordinal, val } from "../../domain";
 import { ItemList } from "../editors/ItemList";
 import { useItemEditor } from "../editors/useItemEditor";
+import { MonthStart } from "./MonthStart";
 
 const SECTIONS = [
   { coll: "banks", title: "Bank accounts", tone: "acc", description: "Every rupee lives in one of these. Balances carry into the next month by themselves." },
   { coll: "incomes", title: "Salaries", tone: "jade", description: "One salary can be split across several banks." },
+  { coll: "monthStart", title: "Month start", tone: "jade" }, // a setting, not a list
   { coll: "wallets", title: "Cash", tone: "brass", description: "Money you withdraw and spend by hand. Leftover cash carries into next month." },
   { coll: "cards", title: "Cards", tone: "violet", description: "Charges build up all month, then the total debits the bank you choose, next month." },
   { coll: "templates", title: "Every month", tone: "ink", description: 'Recurring bills and transfers, grouped by how they\'re paid. "Move" shifts money between your own banks instead of spending it.' },
@@ -39,7 +41,8 @@ export default function SetupPage() {
             {SECTIONS.map((s) => (
               <button key={s.coll} type="button" className={cx("setup-tab", s.coll === section.coll && "on")}
                 aria-current={s.coll === section.coll ? "page" : undefined} onClick={() => setTab(s.coll)}>
-                <span className={"sdot t-" + s.tone} aria-hidden />{s.title}<span className="ct">{plan[s.coll].length}</span>
+                <span className={"sdot t-" + s.tone} aria-hidden />{s.title}
+                <span className="ct">{s.coll === "monthStart" ? ordinal(monthStartDay(plan)) : plan[s.coll].length}</span>
               </button>
             ))}
           </nav>
@@ -51,7 +54,9 @@ export default function SetupPage() {
           </div>
         </aside>
         <div className="setup-main">
-          <ItemList key={section.coll} plan={plan} editor={editor} {...section} />
+          {section.coll === "monthStart"
+            ? <MonthStart monthKey={mk} />
+            : <ItemList key={section.coll} plan={plan} editor={editor} {...section} />}
         </div>
       </div>
       {editor.dialogs}

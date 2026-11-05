@@ -15,18 +15,21 @@
    @typedef {{ov:Object<string,{plan?:number, actual?:number|null, done?:boolean, removed?:boolean, via?:Via}>,
               extra:{id:string, name:string, amount:number, kind:string, id2:string, flow?:string}[],
               adjust:Object<string,number>}} MonthState
-   @typedef {{v:number, active:string, start:string, banks:Bank[], incomes:Income[], wallets:Wallet[],
+   @typedef {{v:number, active:string, start:string, monthStart?:number, banks:Bank[], incomes:Income[], wallets:Wallet[],
               cards:Card[], templates:Template[], installments:Installment[],
               months:Object<string,MonthState>}} Plan
+              (monthStart: the day the plan's months start on, 2–28 — absent = the 1st; see periods.js)
 */
 
 import { uid } from "./ids";
 import { blankMonth, computeMonth, lines } from "./ledger";
-import { currentMonthKey, isDateISO, isMonthKey, mDiff, nextM } from "./months";
+import { currentMonthKey, dateInMonth, isDateISO, isMonthKey, mDiff, nextM } from "./months";
 import { normalizeLog } from "./history";
-import { canApplyToOneMonth, pastBefore, versionedChanges } from "./versions";
+import { canApplyToOneMonth, pastBefore, versionAt, versionedChanges } from "./versions";
+import { currentMonth, monthFor, monthStartDay, stmtDay } from "./periods";
 
-export const PLAN_VERSION = 4;
+/* v5: months follow each account (periods.js) — dated card charges moved to their statement's month. */
+export const PLAN_VERSION = 5;
 export const PLAN_COLLECTIONS = ["banks", "incomes", "wallets", "cards", "templates", "installments"];
 const MAX_ITEMS_PER_COLLECTION = 500;
 const MAX_MONTHS = 600;
@@ -123,7 +126,83 @@ export function normalizePlan(raw) {
   const fallback = keys.sort().at(-1) || currentMonthKey();
   out.active = isMonthKey(raw.active) ? raw.active : fallback;
   out.start = isMonthKey(raw.start) ? raw.start : out.active;
-  return out;
+  if (monthStartDay(raw) > 1) out.monthStart = monthStartDay(raw); else delete out.monthStart;
+  if (!(raw.v >= 5)) out.templates = out.templates.map((t) => statementStart(out, t));
+  return refileDated(out);
+}
+
+/**
+ * Before v5 a monthly card charge went on whichever statement its day fell in; now month M's charge is
+ * on the M statement. Start it from the statement its first charge was on, so that one stays the same.
+ */
+function statementStart(d, t) {
+  if (!isMonthKey(t.startMonth) || !t.day) return t;
+  const first = versionAt(t, t.startMonth);
+  const card = first.via && first.via.kind === "card" && (d.cards || []).find((c) => c.id === first.via.id);
+  if (!stmtDay(card)) return t;
+  const startMonth = monthFor(d, first.via, dateInMonth(t.startMonth, first.day || t.day));
+  return startMonth === t.startMonth ? t : { ...t, startMonth };
+}
+
+/* ---------------- which month an entry is in ---------------- */
+
+/** The month an entry dated `date`, paid from account `ref`, is recorded in: never before the plan's first month. */
+export function entryMonth(d, ref, date) {
+  const mk = monthFor(d, ref, date), first = firstMonth(d);
+  return first && mk < first ? first : mk;
+}
+
+/* Dated one-offs follow the account they're paid from; a transfer follows the account the money leaves
+   (or, for money from outside, the one it goes into). */
+const ENTRIES = {
+  extra: { ref: (e) => ({ kind: e.kind, id: e.id2 }), keys: (e) => ["x:" + e.id] },
+  transfers: { ref: (t) => t.from || t.to, keys: (t) => ["tx:" + t.id, "ti:" + t.id] },
+};
+
+/** Dated one-offs and transfers that aren't in the month their date counts in: [{from, to, coll, item}]. */
+export function datedMoves(d) {
+  const moves = [];
+  for (const mk of Object.keys(d.months || {})) {
+    for (const coll of Object.keys(ENTRIES)) {
+      for (const item of d.months[mk][coll] || []) {
+        if (!item || !isDateISO(item.date)) continue;
+        const to = entryMonth(d, ENTRIES[coll].ref(item), item.date);
+        if (to !== mk) moves.push({ from: mk, to, coll, item });
+      }
+    }
+  }
+  return moves;
+}
+
+/**
+ * Keep every dated one-off and transfer in the month its date counts in — after the month start or a
+ * card's statement day changes, an undo, or for plans saved before months followed the account. Its
+ * month overrides (paid, parts) move with it; months after the last one are added when needed.
+ * Returns `d` itself when nothing moves.
+ */
+export function refileDated(d) {
+  const moves = datedMoves(d);
+  if (!moves.length) return d;
+  const out = moves.reduce((acc, m) => ensureMonthsThrough(acc, m.to), d);
+  const months = { ...out.months };
+  for (const { from, to, coll, item } of moves) {
+    const A = months[from], B = months[to];
+    const aOv = { ...A.ov }, bOv = { ...B.ov };
+    for (const k of ENTRIES[coll].keys(item)) {
+      if (k in aOv) { if (!(k in bOv)) bOv[k] = aOv[k]; delete aOv[k]; }
+    }
+    months[from] = { ...A, [coll]: A[coll].filter((x) => x !== item), ov: aOv };
+    const there = (B[coll] || []).some((x) => x && x.id === item.id); // already there (e.g. restored by an undo)
+    months[to] = { ...B, [coll]: there ? B[coll] : [...(B[coll] || []), item], ov: bOv };
+  }
+  return { ...out, months };
+}
+
+/** The plan's months start on `day` (1 = calendar months); dated entries move into the month they now count in. */
+export function setMonthStart(d, day) {
+  const { monthStart: _m, ...rest } = d;
+  const s = monthStartDay({ monthStart: day });
+  return refileDated(s > 1 ? { ...rest, monthStart: s } : rest);
 }
 
 /* ---------------- mutations (all pure: return a new plan) ---------------- */
@@ -193,7 +272,7 @@ export function removePayment(d, mk, lineKey, paymentId) {
  * values onto past months and months already marked paid, so history keeps
  * showing how those payments were really made. Unpaid months follow the edit.
  */
-export function pinPaidHistory(d, coll, before, after, today = currentMonthKey()) {
+export function pinPaidHistory(d, coll, before, after, today = currentMonth(d)) {
   const prefix = { templates: "t:", installments: "i:" }[coll];
   if (!prefix || !before || !before.via) return d;
   const viaChanged = JSON.stringify(before.via) !== JSON.stringify(after.via);

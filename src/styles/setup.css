@@ -52,4 +52,11 @@
   .srow .btn{grid-column:3;grid-row:1/3}
 }
 
+/* the month start setting */
+.mstart{padding:14px 18px 18px;border-top:1px solid var(--line2)}
+.mstart>*{max-width:560px}
+.mstart .field{max-width:240px}
+.mstart-note{margin:0;font-size:12.5px;color:var(--mute)}
+@media(max-width:520px){ .mstart{padding:12px 14px 14px} }
+
 .sptot{font-size:11.5px;color:var(--mute);padding-top:5px;display:flex;gap:8px;align-items:center;justify-content:space-between}

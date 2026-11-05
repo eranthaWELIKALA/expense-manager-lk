@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDays, addOneOff, addTransfer, billsIn, cardCycleDates, statementName, blankMonth, computeMonth, currentMonthKey, lines, makeReal, markPaid, nextM, normalizePlan, payCard, prevM, removeLine, withoutMaybes,
+  addDays, addOneOff, addTransfer, billsIn, entryMonth, cardCycleDates, statementName, blankMonth, computeMonth, currentMonthKey, lines, makeReal, markPaid, nextM, normalizePlan, payCard, prevM, removeLine, withoutMaybes,
 } from "./index";
 
 /* Aug: card c1 is charged Food 300 + TV 100 = 400, billed to b1 in Sep. */
@@ -146,8 +146,12 @@ describe("cards with no bank", () => {
 });
 
 describe("card statement cycles", () => {
-  // a 50 charge on the 25th of last month: after a statement on the 20th, before one on the 5th... both put it on the next statement
-  const late = (card) => addOneOff(live(card), P0, { name: "Shoes", amount: 50, kind: "card", targetId: "c1", date: P0 + "-25" });
+  // a 50 charge on the 25th of last month, recorded in the month of the statement it's on:
+  // after a statement on the 20th that's this month's; before one on the 5th, last month's
+  const late = (card) => {
+    const d = live(card), date = P0 + "-25";
+    return addOneOff(d, entryMonth(d, { kind: "card", id: "c1" }, date), { name: "Shoes", amount: 50, kind: "card", targetId: "c1", date });
+  };
 
   it("bill what's up to the statement day, due 21 days later", () => {
     const d = late({ statementDay: 20 });

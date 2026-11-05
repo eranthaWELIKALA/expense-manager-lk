@@ -7,7 +7,7 @@ import { useConfirm } from "../../contexts/ConfirmContext";
 import { useViewMonth } from "../../hooks/useViewMonth";
 import {
   computeMonth, fmt, mLabel, mShort, nextM, monthRail,
-  N, isDateISO, isPayable, monthOfDate, setOverride, markPaid, recordPayment, removePayment, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, monthsToOpen, dayMonthLabel,
+  N, isPayable, monthRange, monthStartDay, setOverride, markPaid, recordPayment, removePayment, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, monthsToOpen, dayMonthLabel,
   addTransfer, payCard, makeReal, withoutMaybes, viaLabel, firstMonth, instType,
 } from "../../domain";
 import { NewExpenseModal, RecordPaymentModal } from "../editors/ExpenseModal";
@@ -175,7 +175,7 @@ export default function MonthPage() {
 
   const payLine = paying && month.ls.find((l) => l.key === paying);
   const removePart = (line, part) => {
-    const partMonth = isDateISO(part.date) ? monthOfDate(part.date) : mk; // parts are dated inside their bill's month
+    const partMonth = line.month || mk; // a line found by date carries its month
     update((d) => removePayment(d, partMonth, line.key, part.id),
       { label: `${line.label} — removed a ${fmt(part.amount)} part` });
     toast.info(`Removed the ${fmt(part.amount)} part of “${line.label}”.`);
@@ -225,7 +225,7 @@ export default function MonthPage() {
 
   return (
     <>
-      <MonthNav value={mk} items={pills} openedMonths={plan.months} onSelect={setMonth} onRecord={() => setAdding("record")} onNewExpense={() => setAdding("new")}
+      <MonthNav value={mk} range={monthStartDay(plan) > 1 ? monthRange(plan, mk) : null} items={pills} openedMonths={plan.months} onSelect={setMonth} onRecord={() => setAdding("record")} onNewExpense={() => setAdding("new")}
         onTransfer={() => setAdding("transfer")} onAction={onAction} canEdit={canEdit} />
 
       {!opened && (

@@ -3,7 +3,7 @@ import { useConfirm } from "../../contexts/ConfirmContext";
 import { useProfile } from "../../contexts/ProfileContext";
 import { useToast } from "../../contexts/ToastContext";
 import {
-  addItem, applyItemChange, canApplyToOneMonth, currentMonthKey, instType, lines, mLabel, mShort, pinPaidHistory, removeItem, replaceItem, usageOf, versionedChanges,
+  addItem, applyItemChange, canApplyToOneMonth, currentMonth, currentMonthKey, instType, lines, mLabel, mShort, pinPaidHistory, removeItem, replaceItem, usageOf, versionedChanges,
 } from "../../domain";
 import { ScopeDialog } from "./ScopeDialog";
 import { BankModal, CardModal, IncomeModal, InstallmentModal, RecurringModal, WalletModal } from "./itemModals";
@@ -31,7 +31,7 @@ const SCOPED = new Set(["templates", "incomes"]);
 const SCOPE_SUFFIX = { month: (mk) => " — " + mShort(mk) + " only", future: (mk) => " — from " + mShort(mk), all: () => " — all months" };
 
 /**
- * Past months (before this calendar month) whose numbers an edit would change.
+ * Past months (before the plan's month today counts in) whose numbers an edit would change.
  * Only real changes count — renaming or editing a note is harmless.
  */
 export function pastMonthsAffected(plan, coll, before, after, { keepsPinned = true } = {}) {
@@ -39,7 +39,7 @@ export function pastMonthsAffected(plan, coll, before, after, { keepsPinned = tr
     .filter((k) => !COSMETIC.has(k) && JSON.stringify(before[k]) !== JSON.stringify(after[k]))
     .filter((k) => !(keepsPinned && PINNED.has(k) && (coll === "templates" || coll === "installments")));
   if (changed.length === 0) return [];
-  const past = Object.keys(plan.months).filter((k) => k < currentMonthKey()).sort();
+  const past = Object.keys(plan.months).filter((k) => k < currentMonth(plan)).sort();
   if (coll === "banks") return changed.includes("opening") ? past : [];
   const p = LINE_PREFIX[coll] + before.id;
   return past.filter((mk) => lines(plan, mk).some((l) => l.key === p || l.key.startsWith(p + ":")));

@@ -6,6 +6,7 @@ It has these features:
 
 - **Accounts:** sign up, sign in, password reset, and account settings.
 - **Profiles:** one account can hold many profiles. Each profile is a separate money plan (for example a household, a business or a parent's accounts), and you switch between them from the top bar.
+- **Months that follow your pay:** in **Setup → Month start**, pick the day your salary usually lands. Bank and cash payments made before that day count in the previous month, because that's whose money paid for them. A card with a statement date follows its statements instead, so each charge counts in the month of the statement it's on. When the start day or a statement date changes, payments that are already recorded move to the month they now count in. You can undo the change from History.
 - **Sharing:** the owner of a profile invites partners by email as an **editor** or a **viewer**. Invitees accept from a link or from their Invitations page. Owners can change roles, remove people, revoke invitations and see an activity log.
 
 ## Quick start
@@ -59,7 +60,7 @@ How the Pages limitations are handled:
 
 ```
 src/
-  domain/            Pure money logic: months, ledger maths, installments, plan mutations. Unit-tested.
+  domain/            Pure money logic: months (and which month a date counts in), ledger maths, installments, plan mutations. Unit-tested.
   services/
     backend.js       The backend contract (JSDoc) and adapter selection
     supabase/        Production adapter: Supabase Auth, PostgREST, RPCs, Realtime

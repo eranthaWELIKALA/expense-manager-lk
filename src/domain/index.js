@@ -1,4 +1,5 @@
 export * from "./months";
+export * from "./periods";
 export * from "./format";
 export * from "./ids";
 export * from "./installments";

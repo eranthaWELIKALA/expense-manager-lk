@@ -1,6 +1,9 @@
 import React from "react";
 import { Field, MoneyInput, Select, TextInput } from "../../components/ui";
-import { INSTALLMENT_TYPES, fmt, instType, isDateISO, mDiff, mLabel, mShort, monthOfDate, numOr, todayISO } from "../../domain";
+import {
+  INSTALLMENT_TYPES, entryMonth, firstMonth, fmt, instType, isDateISO, mDiff, mLabel, mShort, monthFor, monthOfDate, monthRange, monthStartDay, numOr,
+  ordinal, statementName, stmtDay, todayISO,
+} from "../../domain";
 import { BANKS, NETWORKS, NO_LOGO, bankInfo, guessBank, guessNetwork, networkInfo } from "../../lib/banks";
 
 /* Form fields shared by every add/edit modal. Values are strings while editing. */
@@ -43,8 +46,24 @@ export function CountField({ form, name, label, hint, placeholder = "", classNam
 /** Furthest ahead an expense can be scheduled. */
 export const maxDate = () => { const d = new Date(); d.setFullYear(d.getFullYear() + 5); return todayISO(d); };
 
-/** Earliest allowed date: the 1st of the plan's first month (balances start there). */
-export const minDateFor = (firstMonthKey) => firstMonthKey + "-01";
+/** Earliest allowed date: the start of the plan's first month (balances start there), or its 1st if that's earlier. */
+export const minDateFor = (plan) => {
+  const first = firstMonth(plan), from = monthRange(plan, first).from;
+  return from < first + "-01" ? from : first + "-01";
+};
+
+/**
+ * Which month a dated payment from `ref` is recorded in, as a field hint — with the reason when it isn't
+ * the date's own month: the card statement it's on, or the plan's month start.
+ */
+export function countsIn(plan, ref, date) {
+  if (!isDateISO(date)) return undefined;
+  const mk = entryMonth(plan, ref, date);
+  const card = ref && ref.kind === "card" && plan.cards.find((c) => c.id === ref.id);
+  if (stmtDay(card)) return `On the ${statementName(monthFor(plan, ref, date))}, so it counts in ${mLabel(mk)}.`;
+  if (mk !== monthOfDate(date)) return `Your months start on the ${ordinal(monthStartDay(plan))}, so it counts in ${mLabel(mk)}.`;
+  return `Counts in ${mLabel(mk)}.`;
+}
 
 export function DateField({ form, name = "date", label = "Date", hint, min, max = maxDate() }) {
   return (
@@ -129,9 +148,9 @@ export function PaidHowField({ form, name = "budget" }) {
  * How an installment that started before the plan's first month will show:
  * the payments before it count as already paid, and it carries on from there.
  */
-function startedBefore(v, planStart) {
+function startedBefore(plan, v, planStart) {
   if (!planStart || !isDateISO(v.date)) return null;
-  const before = mDiff(monthOfDate(v.date), planStart); // months already paid before the plan starts
+  const before = mDiff(monthFor(plan, decodeVia(v.via), v.date), planStart); // months already paid before the plan starts
   if (before <= 0) return null;
   const total = numOr(v.total), first = mShort(planStart), from = mLabel(planStart);
   if (v.mode === "term") {
@@ -149,10 +168,12 @@ function startedBefore(v, planStart) {
 
 /**
  * Installment / loan / lease terms: type, then fixed number of months, or a monthly amount until the total is paid.
- * The first payment can be before `planStart` (the plan's first month) — earlier months are skipped.
+ * The first payment can be before the plan's first month — earlier months are skipped.
  */
-export function InstallmentFields({ form, planStart }) {
+export function InstallmentFields({ form, plan }) {
   const v = form.values;
+  const planStart = firstMonth(plan);
+  const from = isDateISO(v.date) ? monthFor(plan, decodeVia(v.via), v.date) : null; // the month of its first payment
   const total = numOr(v.total), prepaid = numOr(v.prepaid);
   const preview = v.mode === "term"
     ? numOr(v.months) >= 1 && total > 0 && `${fmt(total / Math.round(numOr(v.months)))} a month for ${Math.round(numOr(v.months))} months`
@@ -204,8 +225,8 @@ export function InstallmentFields({ form, planStart }) {
           </Select>
         </Field>
       </div>
-      {preview && <div className="preview">≈ <b>{preview}</b>{v.date ? ", from " + mLabel(monthOfDate(v.date)) : ""}.</div>}
-      {startedBefore(v, planStart) && <div className="preview">{startedBefore(v, planStart)}</div>}
+      {preview && <div className="preview">≈ <b>{preview}</b>{from ? ", from " + mLabel(from) : ""}.</div>}
+      {startedBefore(plan, v, planStart) && <div className="preview">{startedBefore(plan, v, planStart)}</div>}
     </>
   );
 }

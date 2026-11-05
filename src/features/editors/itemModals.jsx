@@ -1,7 +1,7 @@
 import React from "react";
 import { Button, Field, FormModal, MoneyInput, RemoveButton, Select } from "../../components/ui";
 import { useForm } from "../../hooks/useForm";
-import { N, PAY_DAYS, addDays, dateInMonth, dayOfDate, defaultDateIn, firstMonth, fmt, instType, mShort, monthOfDate, numOr, ordinal, uid } from "../../domain";
+import { N, PAY_DAYS, addDays, dayOfDate, defaultDateIn, dueDateIn, firstMonth, fmt, instType, mShort, monthFor, monthOfDate, numOr, ordinal, uid } from "../../domain";
 import { validateAmount, validateDate, validateName } from "../../lib/validation";
 import { bankInfo, cardLogoIds, networkInfo } from "../../lib/banks";
 import {
@@ -99,7 +99,7 @@ export function CardModal({ plan, item, onSave, onClose, onDelete }) {
           : "The bill is kept on the card and paid from whichever bank you choose — but no bank's balance plans for it ahead."} />
       <div className="form-grid">
         <MoneyField form={form} name="limit" label="Credit limit" hint="Optional — shows what's still available." />
-        <CountField form={form} name="statementDay" label="Statement date (day of month)" hint="Optional — charges after it go on the next statement." />
+        <CountField form={form} name="statementDay" label="Statement date (day of month)" hint="Optional — charges after it go on the next statement, and count in that statement's month." />
         {numOr(form.values.statementDay) >= 1
           ? <CountField form={form} name="payDays" label="Days to pay after the statement" placeholder={String(PAY_DAYS)} hint={payByHint(form.values)} />
           : <CountField form={form} name="dueDay" label="Pay by (day of month)" hint="Optional — e.g. 25 for the 25th. Set a statement date instead to work it out." />}
@@ -168,11 +168,11 @@ export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDele
   const form = useForm(
     {
       name: str(item?.name), amount: str(item?.amount ?? ""), flow: item?.flow || "out", budget: item?.budget ? "budget" : "one", via: item ? encodeVia(item.via) : defaultVia(plan), to: item?.to || "",
-      date: item?.startMonth ? dateInMonth(item.startMonth, item.day) : item ? "" : defaultDateIn(startMonth || firstMonth(plan)),
+      date: item?.startMonth ? dueDateIn(plan, item.startMonth, item.via, item.day) : item ? "" : defaultDateIn(plan, startMonth || firstMonth(plan)),
     },
     (v) => ({
       name: validateName(v.name), amount: validateAmount(v.amount), via: v.via ? "" : "Choose how it's paid.",
-      date: validateDate(v.date, { required: false, min: minDateFor(firstMonth(plan)), max: maxDate(), minLabel: "the plan's first month" }),
+      date: validateDate(v.date, { required: false, min: minDateFor(plan), max: maxDate(), minLabel: "the plan's first month" }),
       to: v.flow === "move" && !v.to ? "Choose the bank it moves into." : v.flow === "move" && v.via === "bank|" + v.to ? "Pick a different bank." : "",
     }),
   );
@@ -180,7 +180,7 @@ export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDele
     const next = { ...(item || { id: uid("t"), active: true }), name: v.name.trim(), amount: numOr(v.amount), via: decodeVia(v.via), flow: v.flow };
     if (v.flow === "move") next.to = v.to; else delete next.to;
     if (v.flow === "out" && v.budget === "budget") next.budget = true; else delete next.budget;
-    if (v.date) { next.startMonth = monthOfDate(v.date); next.day = dayOfDate(v.date); } else { delete next.startMonth; delete next.day; }
+    if (v.date) { next.startMonth = monthFor(plan, next.via, v.date); next.day = dayOfDate(v.date); } else { delete next.startMonth; delete next.day; }
     return onSave(next);
   });
   return (
@@ -199,7 +199,7 @@ export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDele
         {form.values.flow === "out" && <PaidHowField form={form} />}
         <PaymentMethodField plan={plan} form={form} label={form.values.flow === "in" ? "Received into" : form.values.flow === "move" ? "Move from" : "Pay with"} />
         {form.values.flow === "move" && <BankField plan={plan} form={form} name="to" label="Move into" />}
-        <DateField form={form} label="First payment" min={minDateFor(firstMonth(plan))} hint="Its day is used as the due day. Leave empty to include every month." />
+        <DateField form={form} label="First payment" min={minDateFor(plan)} hint="Its day is used as the due day. Leave empty to include every month." />
       </div>
     </FormModal>
   );
@@ -218,7 +218,7 @@ export const installmentDefaults = (plan, startMonth, item) => ({
   monthly: item?.mode === "term" && N(item.total) > 0 && N(item.months) > 0 ? (Math.round((item.total / item.months) * 100) / 100).toFixed(2) : str(item?.monthly ?? ""),
   lead: "total",
   prepaid: str(item?.prepaid ?? ""),
-  date: item?.startMonth ? dateInMonth(item.startMonth, item.day) : defaultDateIn(startMonth || firstMonth(plan)),
+  date: item?.startMonth ? dueDateIn(plan, item.startMonth, item.via, item.day) : defaultDateIn(plan, startMonth || firstMonth(plan)),
   via: item ? encodeVia(item.via) : defaultVia(plan),
   auto: item?.auto ? "auto" : "manual",
 });
@@ -233,8 +233,10 @@ export const validateInstallment = (v, _plan) => ({
   via: v.via ? "" : "Choose how it's paid.",
 });
 
-export const installmentFromForm = (v, item) => {
-  const base = { ...(item || { id: uid("i") }), name: v.name.trim(), mode: v.mode, total: numOr(v.total), startMonth: monthOfDate(v.date), day: dayOfDate(v.date), via: decodeVia(v.via) };
+/** The installment a form describes: it starts in the month its first payment counts in for the account it's paid from. */
+export const installmentFromForm = (plan, v, item) => {
+  const via = decodeVia(v.via);
+  const base = { ...(item || { id: uid("i") }), name: v.name.trim(), mode: v.mode, total: numOr(v.total), startMonth: monthFor(plan, via, v.date), day: dayOfDate(v.date), via };
   if (v.mode === "term") { base.months = Math.round(numOr(v.months, 1)); delete base.monthly; delete base.prepaid; }
   else { base.monthly = numOr(v.monthly); base.prepaid = numOr(v.prepaid); delete base.months; }
   if (v.auto === "auto") base.auto = true; else delete base.auto;
@@ -244,14 +246,14 @@ export const installmentFromForm = (v, item) => {
 
 export function InstallmentModal({ plan, item, startMonth, onSave, onClose, onDelete }) {
   const form = useForm(installmentDefaults(plan, startMonth, item), (v) => validateInstallment(v, plan));
-  const save = form.guard((v) => onSave(installmentFromForm(v, item)));
+  const save = form.guard((v) => onSave(installmentFromForm(plan, v, item)));
   const type = instType(form.values.itype);
   return (
     <FormModal title={titleFor(item, type.noun)} description="Set it once. It's added to each month automatically and drops off when paid."
       submitLabel={item ? "Save" : "Add " + type.noun} onSubmit={save} onClose={onClose} onDelete={onDelete}>
       <NameField form={form} placeholder={INST_PLACEHOLDER[type.value]} />
       <PaymentMethodField plan={plan} form={form} />
-      <InstallmentFields form={form} planStart={firstMonth(plan)} />
+      <InstallmentFields form={form} plan={plan} />
     </FormModal>
   );
 }

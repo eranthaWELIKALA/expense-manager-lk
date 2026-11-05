@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { backend, canEditRole } from "../services/backend";
 import { ErrorCode, errorMessage, isAppError } from "../services/errors";
-import { normalizePlan, withLog } from "../domain";
+import { normalizePlan, refileDated, withLog } from "../domain";
 import { useToast } from "./ToastContext";
 import { useWorkspace } from "./WorkspaceContext";
 
@@ -97,11 +97,12 @@ export function ProfileProvider({ profileId, children }) {
   /**
    * Replace the plan (pass the new object or an updater). No-op for viewers.
    * Pass `log: {label, group?, undid?}` to record the change in the plan's history (so it can be undone).
+   * Dated payments are kept in the month they count in, whatever the change (a card's statement day, an undo…).
    */
   const update = useCallback((next, log) => {
     if (!canEditRef.current) return;
     const before = dataRef.current;
-    let v = typeof next === "function" ? next(before) : next;
+    let v = refileDated(typeof next === "function" ? next(before) : next);
     if (log) v = withLog(before, v, { ...log, by: byRef.current });
     if (v === dataRef.current) return;
     dataRef.current = v;

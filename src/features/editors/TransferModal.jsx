@@ -1,9 +1,9 @@
 import React, { useEffect } from "react";
 import { Field, FormModal, Segmented, Select } from "../../components/ui";
 import { useForm } from "../../hooks/useForm";
-import { defaultDateIn, firstMonth, fmt, isDateISO, mLabel, mShort, monthOfDate, numOr, computeMonth, statementName } from "../../domain";
+import { defaultDateIn, entryMonth, firstMonth, fmt, isDateISO, mLabel, mShort, numOr, computeMonth, statementName } from "../../domain";
 import { validateAmount, validateDate } from "../../lib/validation";
-import { DateField, MoneyField, TextField, maxDate, minDateFor } from "./fields";
+import { DateField, MoneyField, TextField, countsIn, maxDate, minDateFor } from "./fields";
 
 export const TRANSFER_KINDS = [
   { value: "cash", label: "Get cash", hint: "Bank → cash" },
@@ -30,11 +30,15 @@ function defaults(plan, kind) {
   }
 }
 
+/** The month a card payment on `date` is recorded in: it's paid from a bank, so the plan's months. */
+const paymentMonth = (plan, date) => (isDateISO(date) ? entryMonth(plan, null, date) : null);
+
 /** What's outstanding on a card on a date: what's left of the bill due that month, otherwise what it owes. */
 export function cardOutstanding(plan, cardRef, date) {
   const to = typeof cardRef === "string" ? ref(cardRef) : cardRef;
-  if (!to || to.kind !== "card" || !isDateISO(date) || !plan.months[monthOfDate(date)]) return 0;
-  const card = computeMonth(plan, monthOfDate(date)).cards.find((c) => c.o.id === to.id);
+  const mk = paymentMonth(plan, date);
+  if (!to || to.kind !== "card" || !mk || !plan.months[mk]) return 0;
+  const card = computeMonth(plan, mk).cards.find((c) => c.o.id === to.id);
   if (!card) return 0;
   return card.bill && card.bill.left > 0.005 ? card.bill.left : Math.max(0, card.owed || 0);
 }
@@ -43,7 +47,7 @@ export function cardOutstanding(plan, cardRef, date) {
 function cardPreview(plan, v) {
   const to = ref(v.to), amount = numOr(v.amount);
   if (!to || to.kind !== "card" || !(amount > 0) || !isDateISO(v.date)) return null;
-  const mk = monthOfDate(v.date);
+  const mk = paymentMonth(plan, v.date);
   if (!plan.months[mk]) return `It's in ${mLabel(mk)}, which isn't started yet — it starts when you save.`;
   const card = computeMonth(plan, mk).cards.find((c) => c.o.id === to.id);
   const bill = card && card.bill; // on the bank's side, or carried on the card when it has no bank
@@ -59,18 +63,19 @@ function cardPreview(plan, v) {
 
 /**
  * Record money moving: cash out of a bank, a deposit, bank to bank, paying a card,
- * or extra cash received. Settled as soon as it's saved.
+ * or extra cash received. Settled as soon as it's saved, in the month its date counts in
+ * for the account the money leaves (or, from outside, the one it goes into).
  * onSave({kind, monthKey, from: {kind,id}|null, to: {kind,id}, amount, date, note})
  */
 export function TransferModal({ plan, monthKey, initialKind = "cash", initialTo, onSave, onClose }) {
-  const minDate = minDateFor(firstMonth(plan));
+  const minDate = minDateFor(plan);
   const start = { ...defaults(plan, initialKind), ...(initialTo ? { to: initialTo } : {}) };
   if (initialKind === "card" && initialTo) { // pay from the card's usual bank, when it has one
     const c = plan.cards.find((x) => "card|" + x.id === initialTo);
     if (c && c.bank) start.from = "bank|" + c.bank;
   }
   const form = useForm(
-    { kind: initialKind, ...start, amount: "", autoAmount: true, date: defaultDateIn(monthKey), note: "" },
+    { kind: initialKind, ...start, amount: "", autoAmount: true, date: defaultDateIn(plan, monthKey), note: "" },
     (v) => ({
       from: v.kind === "cashin" ? "" : !v.from ? "Choose where it comes from." : v.from === v.to ? "Pick two different accounts." : "",
       to: v.to ? "" : "Choose where it goes.",
@@ -101,10 +106,10 @@ export function TransferModal({ plan, monthKey, initialKind = "cash", initialTo,
   );
   const missing = { cash: !plan.wallets.length && "Add a cash pot in Setup first.", card: !plan.cards.length && "Add a card in Setup first.", cashin: !plan.wallets.length && "Add a cash pot in Setup first." }[v.kind];
 
-  const save = form.guard((vals) => onSave({
-    kind: vals.kind, monthKey: monthOfDate(vals.date), from: vals.kind === "cashin" ? null : ref(vals.from), to: ref(vals.to),
-    amount: numOr(vals.amount), date: vals.date, note: vals.note.trim(),
-  }));
+  const save = form.guard((vals) => {
+    const from = vals.kind === "cashin" ? null : ref(vals.from), to = ref(vals.to);
+    return onSave({ kind: vals.kind, monthKey: entryMonth(plan, from || to, vals.date), from, to, amount: numOr(vals.amount), date: vals.date, note: vals.note.trim() });
+  });
   const preview = v.kind === "card" ? cardPreview(plan, v) : null;
 
   return (
@@ -120,7 +125,7 @@ export function TransferModal({ plan, monthKey, initialKind = "cash", initialTo,
         {v.kind === "cashin" && <>{pick("to", "Into cash", wallets, { hint: "Cash you got from somewhere, or found you had more of." })}</>}
         <MoneyField form={form} label="Amount" onChange={(a) => form.setValues((vals) => (a === vals.amount ? vals : { ...vals, amount: a, autoAmount: false }))}
           hint={v.kind === "card" && owing > 0.005 ? (v.autoAmount ? `Outstanding: ${fmt(owing)}` : <>Outstanding {fmt(owing)} · <button type="button" className="linkish" onClick={() => form.set("autoAmount", true)}>use it</button></>) : undefined} />
-        <DateField form={form} label="Date" min={minDate} />
+        <DateField form={form} label="Date" min={minDate} hint={countsIn(plan, (v.kind !== "cashin" && ref(v.from)) || ref(v.to), v.date)} />
       </div>
       {preview && <div className="preview">{preview}</div>}
       <TextField form={form} name="note" label="Note" placeholder={v.kind === "cashin" || v.from === OUTSIDE ? "e.g. Sold the old bike" : "optional"} />
