@@ -13,11 +13,11 @@
    object, so results are memoised per data object via WeakMap.
    ============================================================ */
 
-import { MONTH_NAMES, prevM, nextM, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, isMonthKey, dateInMonth, dateInPeriod, todayISO, addDays } from "./months";
+import { MONTH_NAMES, prevM, nextM, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, isMonthKey, dateInMonth, todayISO, addDays } from "./months";
 import { N, fmt } from "./format";
 import { instFor, instPaid, instType } from "./installments";
 import { versionAt } from "./versions";
-import { cutoffFor, dueDateIn, monthFor, monthRange, payDays, stmtDay } from "./periods";
+import { dueDateIn, monthFor, monthRange, payDays, stmtDay } from "./periods";
 
 export const blankMonth = () => ({ ov: {}, extra: [], transfers: [], adjust: {} });
 
@@ -35,6 +35,15 @@ const accountName = (d, ref) => {
   const list = ref.kind === "card" ? d.cards : ref.kind === "cash" ? d.wallets : d.banks;
   return ((list || []).find((x) => x.id === ref.id) || {}).name || "—";
 };
+
+const listOf = (d, kind) => (kind === "card" ? d.cards : kind === "cash" ? d.wallets : kind === "bank" ? d.banks : null) || [];
+/** Does this bank / cash pot / card still exist? */
+export const hasAccount = (d, ref) => !!ref && listOf(d, ref.kind).some((x) => x.id === ref.id);
+
+/** The other accounts a budget is also paid from (template.also), that still exist — never its own. */
+const alsoVia = (d, t) => (Array.isArray(t.also) ? t.also : [])
+  .filter((v) => v && hasAccount(d, v) && !(v.kind === t.via.kind && v.id === t.via.id))
+  .map((v) => ({ kind: v.kind, id: v.id }));
 
 /** How a transfer reads, from each side. */
 export function transferLabels(d, t) {
@@ -56,6 +65,7 @@ export const asksAmount = (line) => isPayable(line) || (line.origin === "salary"
 export const val = (l) => (l.eff !== undefined ? l.eff : l.actual !== null && l.actual !== undefined ? N(l.actual) : N(l.plan));
 
 const sum = (ps) => ps.reduce((s, p) => s + N(p.amount), 0);
+const monthName = (mk) => MONTH_NAMES[+mk.slice(5, 7) - 1] + " " + mk.slice(0, 4);
 const joinTags = (...t) => t.filter(Boolean).join(" · ") || null;
 
 /** Money back recorded for payments in month `key`: line key → amount (null when there's none). Memoised per plan. */
@@ -95,9 +105,42 @@ function linesNoBills(d, key) {
   return m.get(key);
 }
 
-function computeLines(d, key, withBills) {
+/* Parts paid on a card go on the statement their date is on, which can belong to another month than
+   the payment they're part of (a budget runs over the plan's month; a card's statement doesn't):
+   such a part is a line of that other month. Index: month → its part lines from other months. */
+const AW = new WeakMap();
+function partsFiledIn(d, key) {
+  let ix = AW.get(d);
+  if (!ix) {
+    ix = new Map();
+    AW.set(d, ix); // guards against re-entry
+    for (const mk of Object.keys(d.months || {})) {
+      const away = [];
+      computeLines(d, mk, false, away); // only what's recorded in mk itself
+      for (const a of away) { if (!ix.has(a.month)) ix.set(a.month, []); ix.get(a.month).push(a.line); }
+    }
+  }
+  return ix.get(key) || [];
+}
+
+const sameRef = (a, b) => a.kind === b.kind && a.id === b.id;
+const firstKey = (d) => Object.keys(d.months || {}).sort()[0];
+
+/** The month a part paid from `via` on `date` is a line of: a card charge's statement month, otherwise `key`. */
+function partMonth(d, key, via, date) {
+  if (via.kind !== "card" || !isDateISO(date)) return key;
+  const F = monthFor(d, via, date), first = firstKey(d);
+  return first && F < first ? first : F;
+}
+
+/**
+ * Month `key`'s lines. `away` (an array): collect the parts filed in other months there instead of
+ * adding the parts other months file here — what the index above is built from.
+ */
+function computeLines(d, key, withBills, away = null) {
   const M = d.months[key] || blankMonth();
   const out = [];
+  const elsewhere = away || [];
   const push = (o) => {
     const o2 = M.ov[o.key] || {};
     if (o2.removed) return;
@@ -111,15 +154,18 @@ function computeLines(d, key, withBills) {
     out.push({ ...line, paid: done ? val(line) : 0, remaining: done ? 0 : val(line) }); // an entered actual is the expected cost
   };
 
-  /* Paid in parts (ov.payments): progress on the line itself; parts paid another way
-     come out of that bank / cash pot / card as their own locked lines. */
+  /* Paid in parts (ov.payments): progress on the line itself; parts paid another way come out of that
+     bank / cash pot / card as their own locked lines — on a card, in the month of the statement they're on. */
   const pushParts = (base, o2, pays) => {
-    const here = (p) => !p.via || (p.via.kind === base.kind && p.via.id === base.id);
+    const home = { kind: base.kind, id: base.id };
+    const viaOf = (p) => (p.via && p.via.kind && p.via.id ? { kind: p.via.kind, id: p.via.id } : home);
+    const filedIn = (p) => partMonth(d, key, viaOf(p), p.date);
+    const here = (p) => filedIn(p) === key && sameRef(viaOf(p), home);
     const plan = N(base.plan);
     const paid = sum(pays), paidHere = sum(pays.filter(here));
     // a budget stays open while its month runs (spend can go over); a bill is paid once the parts reach it
     const done = o2.done !== undefined ? !!o2.done
-      : base.budget ? monthRange(d, key, { kind: base.kind, id: base.id }).to < todayISO() : paid >= plan - 0.005;
+      : base.budget ? monthRange(d, key).to < todayISO() : paid >= plan - 0.005; // a budget runs over the plan's month
     const over = base.budget && paid > plan + 0.005;
     const progress = base.budget
       ? (over ? `${fmt(paid - plan)} over budget` : `${fmt(paid)} of ${fmt(plan)} spent`)
@@ -129,11 +175,17 @@ function computeLines(d, key, withBills) {
       eff: done ? paidHere : Math.max(plan - (paid - paidHere), paidHere), // still expected to leave here: the unpaid rest
       tag: joinTags(base.tag, progress),
     });
-    pays.filter((p) => !here(p)).forEach((p) => out.push({
-      key: "p:" + base.key + ":" + p.id, label: base.label + " (part)", kind: p.via.kind, id: p.via.id, flow: base.flow,
-      plan: null, actual: N(p.amount), done: true, origin: "part", locked: true, day: base.day || null,
-      tag: joinTags(p.note || null, isDateISO(p.date) ? "paid " + dayMonthLabel(p.date) : null),
-    }));
+    pays.filter((p) => !here(p)).forEach((p) => {
+      const via = viaOf(p), F = filedIn(p), dated = isDateISO(p.date);
+      const line = {
+        key: "p:" + base.key + ":" + p.id, label: base.label + " (part)", kind: via.kind, id: via.id, flow: base.flow,
+        plan: null, actual: N(p.amount), done: true, origin: "part", locked: true,
+        day: dated ? dayOfDate(p.date) : base.day || null, ...(dated ? { date: p.date } : {}),
+        partOf: { month: key, key: base.key }, // the payment it's part of
+        tag: joinTags(p.note || null, dated ? "paid " + dayMonthLabel(p.date) : null, F !== key ? "for " + monthName(key) : null),
+      };
+      if (F === key) out.push(line); else elsewhere.push({ month: F, line });
+    });
   };
   const planOf = (k, fallback) => { const o = M.ov[k]; return o && o.plan !== undefined ? o.plan : fallback; };
 
@@ -183,8 +235,9 @@ function computeLines(d, key, withBills) {
       push({ key: "t:" + t.id, label: t.name, kind: t.via.kind, id: t.via.id, flow: "out", plan: N(t.amount), origin: "move", tag: "transfer", day });
       push({ key: "tm:" + t.id, label: t.name, kind: "bank", id: t.to, flow: "in", plan: amt, origin: "move", tag: "transfer", locked: true, day });
     } else {
+      const also = budget ? alsoVia(d, t) : [];
       push({ key: "t:" + t.id, label: t.name, kind: t.via.kind, id: t.via.id, flow: t.flow === "in" ? "in" : "out", plan: N(t.amount), origin: "recurring",
-        tag: joinTags(budget ? "budget" : null, due), day, ...(budget ? { budget } : {}) });
+        tag: joinTags(budget ? "budget" : null, due), day, ...(budget ? { budget, ...(also.length ? { also } : {}) } : {}) });
     }
   });
 
@@ -206,6 +259,9 @@ function computeLines(d, key, withBills) {
       tag: joinTags(e.maybe ? "what-if" : null, dated ? dayMonthLabel(e.date) : null), day: dated ? dayOfDate(e.date) : null, date: dated ? e.date : null,
       ...(e.maybe ? { maybe: true } : {}) });
   });
+
+  /* parts of other months' payments that are on this month's card statements */
+  if (!away) out.push(...partsFiledIn(d, key));
 
   /* transfers: out of one account, into another (or in from outside) */
   (M.transfers || []).forEach((t) => {
@@ -365,8 +421,8 @@ function doMonth(d, key, depth) {
     let bal = openingFor(d, key, kind, o.id, depth);
     const opening = bal;
     const order = (l) => (kind === "cash" && l.flow === "in" ? -1 : ORIGIN_ORDER[l.origin] ?? 3); // a cash pot is filled before it's spent
-    const cut = cutoffFor(d, { kind, id: o.id });
-    const when = (l) => l.date || (l.day ? dateInPeriod(key, cut, l.day) : ""); // its day in this account's month
+    const ref = { kind, id: o.id };
+    const when = (l) => l.date || (l.day ? dueDateIn(d, key, ref, l.day) : ""); // its day in this account's month
     const rows = ls.filter((l) => l.kind === kind && l.id === o.id)
       .slice().sort((a, b) => order(a) - order(b) || when(a).localeCompare(when(b)))
       .map((l) => { const a = val(l); bal += l.flow === "in" ? a : -a; return { ...l, amt: a, bal }; });

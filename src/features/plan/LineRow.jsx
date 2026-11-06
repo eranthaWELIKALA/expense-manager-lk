@@ -1,6 +1,6 @@
 import React from "react";
 import { AmountInput, Checkbox, RemoveButton } from "../../components/ui";
-import { asksAmount, fmt, isPayable } from "../../domain";
+import { asksAmount, fmt, hasPayments, isPayable } from "../../domain";
 
 /** Column headings shared by ledgers and cards. */
 export function LineHeader({ showBalance = true }) {
@@ -21,9 +21,11 @@ const Dot = ({ ratio, neg }) => (
  * `actions`: {set(key, field, value), remove(key), pay(key), keep(key)}; omit for read-only. keep() makes a what-if real.
  * Ticking a payable line or a varying salary opens the pay dialog for the real amount.
  * `account` names the line's account (used where lines from several accounts are mixed).
+ * onPayments(line)? opens the payments behind a budget, a line paid in parts, or one of its parts (also when read-only).
  */
-export function LineRow({ line, balanceBase, showBalance = true, lockedHint, actions, account }) {
+export function LineRow({ line, balanceBase, showBalance = true, lockedHint, actions, account, onPayments }) {
   const ro = !actions;
+  const tagClass = "tag" + (line.over ? " over" : "");
   const bal = line.actualBal ?? line.bal; // what's really there after this line
   return (
     <div className={"row" + (line.done ? " done" : "") + (line.maybe ? " maybe" : "")}>
@@ -36,7 +38,10 @@ export function LineRow({ line, balanceBase, showBalance = true, lockedHint, act
           onChange={(v) => (v && actions.pay && asksAmount(line) ? actions.pay(line.key) : actions.set(line.key, "done", v))} />}
       <span className="lbl" title={line.label}>
         {line.flow === "in" && showBalance && <span className="in" aria-label="incoming">↑</span>}{line.label}
-        {line.tag && <span className={"tag" + (line.over ? " over" : "")}>{line.tag}</span>}
+        {onPayments && hasPayments(line)
+          ? <button type="button" className={tagClass + " link"} onClick={() => onPayments(line)} aria-label={`Payments for ${line.label}` + (line.tag ? ` (${line.tag})` : "")}
+            title="See the payments">{line.tag || "payments"}<span aria-hidden> ›</span></button>
+          : line.tag && <span className={tagClass}>{line.tag}</span>}
         {account && <span className="tag where">{account}</span>}
       </span>
       <span className="nums">

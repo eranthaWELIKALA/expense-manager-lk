@@ -15,7 +15,7 @@ const LOCKED_HINT = { bank: "Comes from elsewhere — change it at the source", 
  * Right column of the month view: one account's lines, or (account = null)
  * every open line across accounts. `openRows` = [{line, account}] for that view.
  */
-export function AccountDetail({ account, openRows, autoOpen = 0, hideAuto = false, onHideAuto, onPayCard, actions, openOnly, onOpenOnly, nextLabel }) {
+export function AccountDetail({ account, openRows, autoOpen = 0, hideAuto = false, onHideAuto, onPayCard, actions, onPayments, openOnly, onOpenOnly, nextLabel }) {
   let head, stats, body;
   if (!account) {
     const toPay = openRows.filter((r) => r.line.flow === "out").reduce((s, r) => s + val(r.line), 0);
@@ -30,7 +30,7 @@ export function AccountDetail({ account, openRows, autoOpen = 0, hideAuto = fals
         <LineHeader showBalance={false} />
         {openRows.length === 0 && <EmptyState>{hideAuto && autoOpen ? "Only auto-debits are left — they're marked paid on their due day." : "Everything this month is ticked off."}</EmptyState>}
         {openRows.map(({ line, account: a }) => (
-          <LineRow key={line.key} line={line} showBalance={false} account={a.name} actions={actions} lockedHint={LOCKED_HINT[a.kind]} />
+          <LineRow key={line.key} line={line} showBalance={false} account={a.name} actions={actions} onPayments={onPayments} lockedHint={LOCKED_HINT[a.kind]} />
         ))}
       </>
     );
@@ -68,7 +68,7 @@ export function AccountDetail({ account, openRows, autoOpen = 0, hideAuto = fals
       <>
         <LineHeader showBalance={!card} />
         {rows.length === 0 && <EmptyState>{openOnly && a.rows.length ? "Everything here is ticked off." : card ? "No charges on this card." : "Nothing moves through here yet."}</EmptyState>}
-        {rows.map((r) => <LineRow key={r.key} line={r} balanceBase={base} showBalance={!card} actions={actions} lockedHint={LOCKED_HINT[a.kind]} />)}
+        {rows.map((r) => <LineRow key={r.key} line={r} balanceBase={base} showBalance={!card} actions={actions} onPayments={onPayments} lockedHint={LOCKED_HINT[a.kind]} />)}
       </>
     );
   }

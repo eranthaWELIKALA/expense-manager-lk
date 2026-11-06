@@ -23,7 +23,8 @@ const nounOf = (coll, item) => (coll === "installments" ? instType(item).noun : 
 
 /* Ledger line keys each collection produces (see domain/ledger.js). */
 const LINE_PREFIX = { incomes: "s:", wallets: "w:", cards: "b:", templates: "t:", installments: "i:" };
-const COSMETIC = new Set(["name", "note", "logo", "issuer", "network"]);
+/* Fields that change no figures: names, notes and logos, and the other accounts a budget is offered for (`also`). */
+const COSMETIC = new Set(["name", "note", "logo", "issuer", "network", "also"]);
 /* Payment method / auto-debit changes leave history alone (see pinPaidHistory). */
 const PINNED = new Set(["via", "auto"]);
 /* Edits to these ask which months they apply to (see applyItemChange). */

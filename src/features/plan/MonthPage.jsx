@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Banner, Button, StatCard } from "../../components/ui";
 import { useProfile } from "../../contexts/ProfileContext";
@@ -6,8 +6,8 @@ import { useToast } from "../../contexts/ToastContext";
 import { useConfirm } from "../../contexts/ConfirmContext";
 import { useViewMonth } from "../../hooks/useViewMonth";
 import {
-  computeMonth, fmt, mLabel, mShort, nextM, monthRail,
-  N, isPayable, monthRange, monthStartDay, setOverride, markPaid, recordPayment, removePayment, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, monthsToOpen, dayMonthLabel,
+  computeMonth, fmt, lines, mLabel, mShort, nextM, monthRail,
+  N, isPayable, monthRange, offCalendar, setMonthDates, setOverride, markPaid, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, dayMonthLabel,
   addTransfer, addMoneyBack, payCard, makeReal, withoutMaybes, viaLabel, firstMonth, instType,
 } from "../../domain";
 import { NewExpenseModal, RecordPaymentModal } from "../editors/ExpenseModal";
@@ -21,6 +21,9 @@ import { PayDialog } from "./PayDialog";
 import { IncomeReceivedModal, PickItemModal } from "./ActionModals";
 import { useItemEditor } from "../editors/useItemEditor";
 import { useUndo } from "../history/useUndo";
+import { usePayments } from "./usePayments";
+import { PaymentsDialog } from "../budgets/PaymentsDialog";
+import { MonthDatesDialog } from "./MonthDatesDialog";
 
 const PICK = {
   templates: { title: "Change a monthly item", describe: (x) => fmt(x.amount) },
@@ -34,7 +37,8 @@ export default function MonthPage() {
   const [rolling, setRolling] = useState(false);
   const [adding, setAdding] = useState(null); // "record" | "new" | "maybe" | "transfer" | "back" | {payCard: id}
   const [hideMaybes, setHideMaybes] = useState(false); // compare balances without the what-ifs
-  const [paying, setPaying] = useState(null); // line key
+  const [paying, setPaying] = useState(null); // {month, key}: the line being paid (usually in the month on screen)
+  const [viewing, setViewing] = useState(null); // {month, key}: the line whose payments are open
   const [modal, setModal] = useState(null); // Actions menu: "income" | "edit:<coll>"
   const [selected, setSelected] = useState(null); // account key ("bank:<id>" …) or "open"; null = first account
   const [openOnly, setOpenOnly] = useState(false);
@@ -59,17 +63,7 @@ export default function MonthPage() {
 
   const opened = !!plan.months[mk];
 
-  /** Ask before adding months to the plan. Resolves true when there's nothing new or the user agrees. */
-  const confirmNewMonths = async (k, reason) => {
-    const added = monthsToOpen(plan, k);
-    if (!added.length) return true;
-    const span = added.length === 1 ? mLabel(added[0]) : `${added.length} months (${mLabel(added[0])} – ${mLabel(added[added.length - 1])})`;
-    return confirm({
-      title: `Start ${mLabel(k)}?`,
-      message: `${reason ? reason + " " : ""}This adds ${span} to your plan. Salaries, monthly items and installments are filled in, and balances carry over from the month before. You can undo it from History.`,
-      confirmLabel: added.length === 1 ? `Start ${mShort(k)}` : `Add ${added.length} months`,
-    });
-  };
+  const { confirmNewMonths, pay, removePart } = usePayments(mk);
 
   const startMonth = async () => {
     if (!(await confirmNewMonths(mk))) return;
@@ -85,7 +79,7 @@ export default function MonthPage() {
         : `${field === "plan" ? "planned" : "actual"} ${value === null ? "cleared" : "set to " + fmt(value)}`;
       update((d) => setOverride(d, mk, key, field, value), { label: `${name} — ${what} in ${mShort(mk)}`, group: `set:${mk}:${key}:${field}` });
     },
-    pay: (key) => setPaying(key),
+    pay: (key) => setPaying({ month: mk, key }),
     keep: (key) => {
       const line = month.ls.find((l) => l.key === key);
       update((d) => makeReal(d, mk, key), { label: `Kept what-if “${line ? line.label : "payment"}” in ${mShort(mk)}` });
@@ -137,22 +131,12 @@ export default function MonthPage() {
       setAdding(null);
       return;
     }
-    if ((type === "pay" || type === "once") && !(await confirmNewMonths(monthKey, `This payment is in ${mLabel(monthKey)}, which isn't started yet.`))) return; // keep the form open
-    if (type === "pay" && line.budget) {
-      const spent = (line.paid || 0) + payment.amount;
-      update((d) => recordPayment(ensureMonthsThrough(d, monthKey), monthKey, line.key, payment),
-        { label: `${line.label} — spent ${fmt(payment.amount)} on ${dayMonthLabel(payment.date)}` + (payment.note ? ` (${payment.note})` : "") });
-      toast.success(`${fmt(payment.amount)} added to “${line.label}” — ${fmt(spent)} of ${fmt(line.plan)} spent` + (monthKey === mk ? "." : ` in ${mLabel(monthKey)}.`));
-      setPaying(null);
-    } else if (type === "pay") {
-      const after = (line.paid || 0) + payment.amount;
-      const settled = payment.settle || payment.amount >= line.remaining - 0.005 || after >= Number(line.plan) - 0.005;
-      const what = settled ? "paid" : `part paid (${fmt(after)} of ${fmt(line.plan)})`;
-      update((d) => recordPayment(ensureMonthsThrough(d, monthKey), monthKey, line.key, payment),
-        { label: `${line.label} — ${settled ? "paid" : "part paid"} ${fmt(payment.amount)} on ${dayMonthLabel(payment.date)}` });
-      toast.success(`“${line.label}” ${what}` + (monthKey === mk ? "." : ` in ${mLabel(monthKey)}.`));
-      setPaying(null);
-    } else if (type === "once") {
+    if (type === "pay") {
+      if (await pay({ monthKey, line, payment })) { setPaying(null); setAdding(null); } // else keep the form open
+      return;
+    }
+    if (type === "once" && !(await confirmNewMonths(monthKey, `This payment is in ${mLabel(monthKey)}, which isn't started yet.`))) return; // keep the form open
+    if (type === "once") {
       const verb = item.paid ? "Paid" : "Scheduled";
       update((d) => addOneOff(ensureMonthsThrough(d, monthKey), monthKey, item), { label: `${verb} “${item.name}” (${fmt(item.amount)}) on ${dayMonthLabel(item.date)}` });
       toast.success(`“${item.name}” ${verb.toLowerCase()} on ${dayMonthLabel(item.date)}` + (monthKey === mk ? "." : ` — it's in ${mLabel(monthKey)}.`));
@@ -174,14 +158,15 @@ export default function MonthPage() {
     setModal(null);
   };
   const editColl = modal && modal.startsWith("edit:") ? modal.slice(5) : null;
-
-  const payLine = paying && month.ls.find((l) => l.key === paying);
-  const removePart = (line, part) => {
-    const partMonth = line.month || mk; // a line found by date carries its month
-    update((d) => removePayment(d, partMonth, line.key, part.id),
-      { label: `${line.label} — removed a ${fmt(part.amount)} part` });
-    toast.info(`Removed the ${fmt(part.amount)} part of “${line.label}”.`);
+  const saveDates = (dates) => {
+    update((d) => setMonthDates(d, mk, dates), { label: `${mLabel(mk)} dates ${dates.from === null && dates.to === null ? "back to the usual days" : "changed"}` });
+    const r = monthRange(setMonthDates(plan, mk, dates), mk);
+    toast.success(`${mLabel(mk)} now runs ${dayMonthLabel(r.from)} – ${dayMonthLabel(r.to)}.`);
+    setModal(null);
   };
+
+  const payLine = paying && (paying.month === mk ? month.ls : lines(plan, paying.month)).find((l) => l.key === paying.key);
+  const closeViewing = useCallback(() => setViewing(null), []);
   const nextLabel = mShort(nextM(mk));
   const overPlan = month.spent > month.planned;
 
@@ -231,7 +216,8 @@ export default function MonthPage() {
 
   return (
     <>
-      <MonthNav value={mk} range={monthStartDay(plan) > 1 ? monthRange(plan, mk) : null} items={pills} openedMonths={plan.months} onSelect={setMonth} onRecord={() => setAdding("record")} onNewExpense={() => setAdding("new")}
+      <MonthNav value={mk} range={offCalendar(plan) ? monthRange(plan, mk) : null} onEditDates={canEdit ? () => setModal("dates") : undefined}
+        items={pills} openedMonths={plan.months} onSelect={setMonth} onRecord={() => setAdding("record")} onNewExpense={() => setAdding("new")}
         onTransfer={() => setAdding("transfer")} onAction={onAction} canEdit={canEdit} />
 
       {!opened && (
@@ -299,7 +285,7 @@ export default function MonthPage() {
 
       <div className="mwork">
         <AccountList accounts={accounts} selected={current ? current.key : "open"} onSelect={setSelected} openCount={openRows.length} />
-        <AccountDetail account={current} openRows={tickRows} autoOpen={autoOpen} hideAuto={hideAuto} onHideAuto={setHideAuto} onPayCard={canEdit ? (id) => setAdding({ payCard: id }) : undefined} actions={actions} openOnly={openOnly} onOpenOnly={setOpenOnly}
+        <AccountDetail account={current} openRows={tickRows} autoOpen={autoOpen} hideAuto={hideAuto} onHideAuto={setHideAuto} onPayCard={canEdit ? (id) => setAdding({ payCard: id }) : undefined} actions={actions} onPayments={(l) => setViewing(l.partOf || { month: mk, key: l.key })} openOnly={openOnly} onOpenOnly={setOpenOnly}
           nextLabel={nextLabel} />
       </div>
 
@@ -314,7 +300,7 @@ export default function MonthPage() {
       )}
 
       {payLine && isPayable(payLine) && (
-        <RecordPaymentModal plan={plan} monthKey={mk} fixedLine={payLine} onSave={saveExpense} onRemovePart={removePart} onClose={() => setPaying(null)} />
+        <RecordPaymentModal plan={plan} monthKey={paying.month} fixedLine={payLine} onSave={saveExpense} onRemovePart={(l, p) => removePart({ ...l, month: paying.month }, p)} onClose={() => setPaying(null)} />
       )}
       {payLine && !isPayable(payLine) && (
         <PayDialog plan={plan} line={payLine} monthKey={mk} onClose={() => setPaying(null)}
@@ -326,10 +312,15 @@ export default function MonthPage() {
           }} />
       )}
 
+      {viewing && (
+        <PaymentsDialog plan={plan} monthKey={viewing.month} lineKey={viewing.key} onClose={closeViewing}
+          onAdd={actions ? (key) => { setViewing(null); setPaying({ month: viewing.month, key }); } : undefined} />
+      )}
       {adding === "record" && <RecordPaymentModal plan={plan} monthKey={mk} onSave={saveExpense} onRemovePart={removePart} onClose={() => setAdding(null)} />}
       {(adding === "new" || adding === "maybe") && <NewExpenseModal plan={plan} monthKey={mk} initialType={adding === "maybe" ? "maybe" : "monthly"} onSave={saveExpense} onClose={() => setAdding(null)} />}
       {(adding === "transfer" || adding === "back") && <TransferModal plan={plan} monthKey={mk} initialKind={adding === "back" ? "back" : "cash"} onSave={saveTransfer} onClose={() => setAdding(null)} />}
       {adding && adding.payCard && <TransferModal plan={plan} monthKey={mk} initialKind="card" initialTo={"card|" + adding.payCard} onSave={saveTransfer} onClose={() => setAdding(null)} />}
+      {modal === "dates" && <MonthDatesDialog plan={plan} monthKey={mk} onClose={() => setModal(null)} onSave={saveDates} />}
       {modal === "income" && <IncomeReceivedModal plan={plan} monthKey={mk} onSave={saveIncome} onClose={() => setModal(null)} />}
       {editColl && (
         <PickItemModal {...PICK[editColl]} items={plan[editColl]} onClose={() => setModal(null)}

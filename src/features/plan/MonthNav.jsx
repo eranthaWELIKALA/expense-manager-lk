@@ -4,10 +4,11 @@ import { dayMonthLabel, mLabel, mShort, nextM, prevM } from "../../domain";
 
 /**
  * Month rail: prev/next, a pill per opened month, record payment, new expense and the "more" menu.
- * `range` ({from, to}): the month's first and last day, shown when months don't follow the calendar.
- * onAction(name): "income" | "back" | "maybe" | "edit:templates" | "edit:incomes" | "edit:installments" | "undo" | "history" | "move"
+ * `range` ({from, to}): the month's first and last day, shown when months don't follow the calendar;
+ * with `onEditDates` it's a button that changes them.
+ * onAction(name): "income" | "back" | "maybe" | "dates" | "edit:templates" | "edit:incomes" | "edit:installments" | "undo" | "history" | "move"
  */
-export function MonthNav({ value, range, items, openedMonths, onSelect, onRecord, onNewExpense, onTransfer, onAction, canEdit }) {
+export function MonthNav({ value, range, items, openedMonths, onSelect, onRecord, onNewExpense, onTransfer, onAction, onEditDates, canEdit }) {
   const pillsRef = useRef(null);
   useEffect(() => { // keep the chosen month in view
     const on = pillsRef.current?.querySelector(".mpill.on");
@@ -20,7 +21,10 @@ export function MonthNav({ value, range, items, openedMonths, onSelect, onRecord
         <button type="button" className="mnav" onClick={() => onSelect(prevM(value))} aria-label="Previous month">‹</button>
         <div className="mnow" aria-live="polite">
           {mLabel(value)}
-          {range && <small>{dayMonthLabel(range.from)} – {dayMonthLabel(range.to)}</small>}
+          {range && (onEditDates
+            ? <button type="button" className="mdates-btn" onClick={onEditDates} title="Change this month's dates" aria-label={`${dayMonthLabel(range.from)} – ${dayMonthLabel(range.to)}, change this month's dates`}>
+              {dayMonthLabel(range.from)} – {dayMonthLabel(range.to)}<span aria-hidden> ✎</span></button>
+            : <small>{dayMonthLabel(range.from)} – {dayMonthLabel(range.to)}</small>)}
         </div>
         <button type="button" className="mnav" onClick={() => onSelect(nextM(value))} aria-label="Next month">›</button>
         <div className="mpills" ref={pillsRef}>
@@ -57,6 +61,7 @@ export function MonthNav({ value, range, items, openedMonths, onSelect, onRecord
             <MenuItem onClick={() => onAction("edit:templates")}><span className="mi" aria-hidden>↻</span>Change a monthly item…</MenuItem>
             <MenuItem onClick={() => onAction("edit:incomes")}><span className="mi" aria-hidden>₨</span>Change a salary…</MenuItem>
             <MenuItem onClick={() => onAction("edit:installments")}><span className="mi" aria-hidden>▤</span>Change an installment…</MenuItem>
+            <MenuItem onClick={() => onAction("dates")}><span className="mi" aria-hidden>▦</span>Change this month's dates…</MenuItem>
             <MenuDivider />
             <MenuItem onClick={() => onAction("move")}><span className="mi" aria-hidden>→</span>Move into {mShort(nextM(value))}…</MenuItem>
             <MenuDivider />

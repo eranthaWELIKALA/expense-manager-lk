@@ -103,16 +103,29 @@ export function LogoField({ form, name, label, networks = false }) {
   );
 }
 
-/** Payment method: straight from a bank, from a cash pot, or on a card. Value is "kind|id". */
-export function PaymentMethodField({ plan, form, name = "via", label = "Pay with" }) {
+/**
+ * Payment method: straight from a bank, from a cash pot, or on a card. Value is "kind|id".
+ * `preferred` ("kind|id" list): accounts offered first, in their own group (a budget's accounts).
+ */
+export function PaymentMethodField({ plan, form, name = "via", label = "Pay with", preferred, preferredLabel = "Usually" }) {
   const empty = plan.banks.length + plan.wallets.length + plan.cards.length === 0;
+  const groups = [
+    { label: "Direct from bank", kind: "bank", items: plan.banks },
+    { label: "Cash", kind: "cash", items: plan.wallets },
+    { label: "Card", kind: "card", items: plan.cards },
+  ];
+  const all = groups.flatMap((g) => g.items.map((x) => ({ value: g.kind + "|" + x.id, name: x.name, kind: g.label })));
+  const first = (preferred || []).map((v) => all.find((a) => a.value === v)).filter(Boolean);
+  const isFirst = (v) => first.some((a) => a.value === v);
   return (
     <Field label={label} error={form.errors[name]} hint={empty ? "Add a bank, cash pot or card in Setup first." : undefined}>
       <Select value={form.values[name] || ""} onChange={form.set(name)}>
         {!form.values[name] && <option value="">Choose how it's paid…</option>}
-        {plan.banks.length > 0 && <optgroup label="Direct from bank">{plan.banks.map((b) => <option key={b.id} value={"bank|" + b.id}>{b.name}</option>)}</optgroup>}
-        {plan.wallets.length > 0 && <optgroup label="Cash">{plan.wallets.map((w) => <option key={w.id} value={"cash|" + w.id}>{w.name}</option>)}</optgroup>}
-        {plan.cards.length > 0 && <optgroup label="Card">{plan.cards.map((c) => <option key={c.id} value={"card|" + c.id}>{c.name}</option>)}</optgroup>}
+        {first.length > 0 && <optgroup label={preferredLabel}>{first.map((a) => <option key={a.value} value={a.value}>{a.name} ({a.kind === "Direct from bank" ? "bank" : a.kind.toLowerCase()})</option>)}</optgroup>}
+        {groups.map((g) => {
+          const items = g.items.filter((x) => !isFirst(g.kind + "|" + x.id));
+          return items.length > 0 && <optgroup key={g.kind} label={g.label}>{items.map((x) => <option key={x.id} value={g.kind + "|" + x.id}>{x.name}</option>)}</optgroup>;
+        })}
       </Select>
     </Field>
   );
@@ -128,6 +141,46 @@ export const defaultVia = (plan) => {
   if (plan.wallets[0]) return "cash|" + plan.wallets[0].id;
   return "";
 };
+
+/**
+ * A budget's other accounts — it can be paid from more than one (electricity in cash or on a card, say).
+ * Value: a list of "kind|id". What's left of the budget stays set aside in `primary` (the "Pay with" choice).
+ */
+export function AlsoPaidWithField({ plan, form, name = "also", primary }) {
+  const chosen = (form.values[name] || []).filter((v) => v !== primary);
+  const all = [
+    ...plan.banks.map((b) => ({ value: "bank|" + b.id, name: b.name, kind: "Bank" })),
+    ...plan.wallets.map((w) => ({ value: "cash|" + w.id, name: w.name, kind: "Cash" })),
+    ...plan.cards.map((c) => ({ value: "card|" + c.id, name: c.name, kind: "Card" })),
+  ].filter((a) => a.value !== primary);
+  if (!all.length) return null;
+  const p = primary ? decodeVia(primary) : null;
+  const primaryName = p && ((p.kind === "card" ? plan.cards : p.kind === "cash" ? plan.wallets : plan.banks).find((x) => x.id === p.id) || {}).name;
+  const toggle = (v) => form.set(name, chosen.includes(v) ? chosen.filter((x) => x !== v) : [...chosen, v]);
+  return (
+    <fieldset className="field vchips-f">
+      <legend>Also paid with <span className="mut">· optional</span></legend>
+      <div className="vchips">
+        {all.map((a) => {
+          const on = chosen.includes(a.value);
+          return (
+            <button key={a.value} type="button" className={"vchip" + (on ? " on" : "")} aria-pressed={on} onClick={() => toggle(a.value)}>
+              <span className="vchip-k">{a.kind}</span>{a.name}
+            </button>
+          );
+        })}
+      </div>
+      <p className="field-hint">
+        {chosen.length
+          ? `Record each payment with the account you used. Until it's spent, the rest stays set aside in ${primaryName || "the account above"}.`
+          : "Pick any others you sometimes pay it with, so they're offered first when you record a payment."}
+      </p>
+    </fieldset>
+  );
+}
+
+/** A form's "kind|id" list as accounts (for a budget's `also`), without `primary`. */
+export const decodeAlso = (list, primary) => [...new Set(list || [])].filter((v) => v && v !== primary).map(decodeVia);
 
 /** One payment (a bill) or several (a budget like groceries or sport, total varies). Value "one" | "budget". */
 export function PaidHowField({ form, name = "budget" }) {

@@ -47,6 +47,7 @@ function ProfileFrame() {
         <div className="phdr-nav">
           <NavTabs keepSearch items={[
             { to: base + "/month", label: "Month" },
+            { to: base + "/budgets", label: "Budgets" },
             { to: base + "/commitments", label: "Commitments" },
             { to: base + "/setup", label: "Setup" },
             { to: base + "/history", label: "History" },
@@ -60,7 +61,7 @@ function ProfileFrame() {
   );
 }
 
-/** /p/:profileId/* — loads the profile and renders the Month / Commitments / Setup / History tabs. */
+/** /p/:profileId/* — loads the profile and renders the Month / Budgets / Commitments / Setup / History tabs. */
 export default function ProfileLayout() {
   const { profileId } = useParams();
   // key: fully reset state (and flush saves) when switching profiles

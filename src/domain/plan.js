@@ -8,25 +8,28 @@
    @typedef {{id:string, name:string, bank:string, note?:string, limit?:number, dueDay?:number}} Card
               (limit: credit limit; dueDay: day of the month the bill must be paid by)
    @typedef {{id:string, name:string, amount:number, via:Via, flow:"out"|"in"|"move", to?:string, active?:boolean, budget?:boolean,
-              startMonth?:string, day?:number, past?:object[]}} Template
+              also?:Via[], startMonth?:string, day?:number, past?:object[]}} Template
+              (budget: spent in several payments; also: other accounts a budget is paid from — what's
+               left of it stays set aside in `via`)
    @typedef {{id:string, name:string, mode:"term"|"open", total:number, months?:number, monthly?:number,
               prepaid?:number, startMonth:string, via:Via, auto?:boolean, type?:"loan"|"lease"}} Installment
               (auto: deducted automatically — counts as paid once its due day passes; type: absent = an installment)
    @typedef {{ov:Object<string,{plan?:number, actual?:number|null, done?:boolean, removed?:boolean, via?:Via}>,
               extra:{id:string, name:string, amount:number, kind:string, id2:string, flow?:string}[],
               adjust:Object<string,number>}} MonthState
-   @typedef {{v:number, active:string, start:string, monthStart?:number, banks:Bank[], incomes:Income[], wallets:Wallet[],
-              cards:Card[], templates:Template[], installments:Installment[],
+   @typedef {{v:number, active:string, start:string, monthStart?:number, monthStarts?:Object<string,string>,
+              banks:Bank[], incomes:Income[], wallets:Wallet[], cards:Card[], templates:Template[], installments:Installment[],
               months:Object<string,MonthState>}} Plan
-              (monthStart: the day the plan's months start on, 2–28 — absent = the 1st; see periods.js)
+              (monthStart: the day the plan's months usually start on, 2–28 — absent = the 1st;
+               monthStarts: months that start on a day of their own, "YYYY-MM" → "YYYY-MM-DD"; see periods.js)
 */
 
 import { uid } from "./ids";
 import { blankMonth, computeMonth, lines } from "./ledger";
-import { currentMonthKey, dateInMonth, isDateISO, isMonthKey, mDiff, nextM } from "./months";
+import { addDays, currentMonthKey, dateInMonth, isDateISO, isMonthKey, mDiff, mLabel, nextM } from "./months";
 import { normalizeLog } from "./history";
 import { canApplyToOneMonth, pastBefore, versionAt, versionedChanges } from "./versions";
-import { currentMonth, monthFor, monthStartDay, stmtDay } from "./periods";
+import { currentMonth, monthFor, monthStartDay, startLimits, stmtDay, usualStart } from "./periods";
 
 /* v5: months follow each account (periods.js) — dated card charges moved to their statement's month. */
 export const PLAN_VERSION = 5;
@@ -127,8 +130,27 @@ export function normalizePlan(raw) {
   out.active = isMonthKey(raw.active) ? raw.active : fallback;
   out.start = isMonthKey(raw.start) ? raw.start : out.active;
   if (monthStartDay(raw) > 1) out.monthStart = monthStartDay(raw); else delete out.monthStart;
+  withStarts(out, raw.monthStarts);
   if (!(raw.v >= 5)) out.templates = out.templates.map((t) => statementStart(out, t));
+  out.templates = out.templates.map((t) => cleanAlso(out, t));
   return refileDated(out);
+}
+
+const VIA_KINDS = new Set(["bank", "cash", "card"]);
+/** A budget's other accounts: well-formed, once each, not its own, only on budgets. */
+function cleanAlso(d, t) {
+  if (t.also === undefined) return t;
+  const { also, ...rest } = t;
+  if (!t.budget || !Array.isArray(also)) return rest;
+  const seen = new Set([t.via ? t.via.kind + "|" + t.via.id : ""]);
+  const kept = [];
+  for (const v of also) {
+    const k = isObj(v) && VIA_KINDS.has(v.kind) && typeof v.id === "string" ? v.kind + "|" + v.id : null;
+    if (!k || seen.has(k) || kept.length >= 12) continue;
+    seen.add(k);
+    kept.push({ kind: v.kind, id: v.id });
+  }
+  return kept.length ? { ...rest, also: kept } : rest;
 }
 
 /**
@@ -152,6 +174,15 @@ export function entryMonth(d, ref, date) {
   return first && mk < first ? first : mk;
 }
 
+/**
+ * The month a payment towards `line` dated `date` is recorded in. A budget runs over the plan's months
+ * whatever pays it (a part on a card still goes on the statement its date is on — see ledger.js);
+ * anything else follows its own account.
+ */
+export const lineMonth = (d, line, date) => entryMonth(d, line.budget ? null : { kind: line.kind, id: line.id }, date);
+/** The account whose months a line's payments follow (null: the plan's months). */
+export const lineRef = (line) => (line.budget ? null : { kind: line.kind, id: line.id });
+
 /* Dated one-offs follow the account they're paid from; a transfer follows the account the money leaves
    (or, for money from outside, the one it goes into). */
 const ENTRIES = {
@@ -159,9 +190,14 @@ const ENTRIES = {
   transfers: { ref: (t) => t.from || t.to, keys: (t) => ["tx:" + t.id, "ti:" + t.id] },
 };
 
-/** Dated one-offs and transfers that aren't in the month their date counts in: [{from, to, coll, item}]. */
+/**
+ * Dated one-offs, transfers and budget payments that aren't in the month their date counts in:
+ * [{from, to, coll, item, key?}]. A budget's payments (coll "parts", `key` its line) follow the plan's
+ * months, and only move to a month the budget is in.
+ */
 export function datedMoves(d) {
   const moves = [];
+  const budgets = new Map((d.templates || []).filter((t) => t.budget && t.active !== false).map((t) => ["t:" + t.id, t]));
   for (const mk of Object.keys(d.months || {})) {
     for (const coll of Object.keys(ENTRIES)) {
       for (const item of d.months[mk][coll] || []) {
@@ -170,8 +206,31 @@ export function datedMoves(d) {
         if (to !== mk) moves.push({ from: mk, to, coll, item });
       }
     }
+    for (const [key, o] of Object.entries(d.months[mk].ov || {})) {
+      const t = budgets.get(key);
+      if (!t || !o || !Array.isArray(o.payments)) continue;
+      for (const p of o.payments) {
+        if (!p || !isDateISO(p.date)) continue;
+        const to = entryMonth(d, null, p.date);
+        const there = ((d.months[to] || {}).ov || {})[key];
+        if (to === mk || (t.startMonth && to < t.startMonth) || (there && there.removed)) continue;
+        moves.push({ from: mk, to, coll: "parts", key, item: p });
+      }
+    }
   }
   return moves;
+}
+
+/** Move one budget payment from month A's line `key` to month B's (both month states); returns [A, B]. */
+function movePart(A, B, key, p) {
+  const a = A.ov[key] || {}, b = B.ov[key] || {};
+  const left = (a.payments || []).filter((x) => x !== p);
+  const { payments: _p, ...aRest } = a;
+  const already = (b.payments || []).some((x) => x && x.id === p.id);
+  return [
+    { ...A, ov: { ...A.ov, [key]: left.length ? { ...aRest, payments: left } : aRest } },
+    { ...B, ov: { ...B.ov, [key]: { ...b, payments: already ? b.payments : [...(b.payments || []), p] } } },
+  ];
 }
 
 /**
@@ -185,7 +244,8 @@ export function refileDated(d) {
   if (!moves.length) return d;
   const out = moves.reduce((acc, m) => ensureMonthsThrough(acc, m.to), d);
   const months = { ...out.months };
-  for (const { from, to, coll, item } of moves) {
+  for (const { from, to, coll, item, key } of moves) {
+    if (coll === "parts") { [months[from], months[to]] = movePart(months[from], months[to], key, item); continue; }
     const A = months[from], B = months[to];
     const aOv = { ...A.ov }, bOv = { ...B.ov };
     for (const k of ENTRIES[coll].keys(item)) {
@@ -198,12 +258,52 @@ export function refileDated(d) {
   return { ...out, months };
 }
 
-/** The plan's months start on `day` (1 = calendar months); dated entries move into the month they now count in. */
+/** The plan's months usually start on `day` (1 = calendar months); dated entries move into the month they now count in. */
 export function setMonthStart(d, day) {
   const { monthStart: _m, ...rest } = d;
   const s = monthStartDay({ monthStart: day });
-  return refileDated(s > 1 ? { ...rest, monthStart: s } : rest);
+  const next = s > 1 ? { ...rest, monthStart: s } : rest;
+  return refileDated(withStarts(next, d.monthStarts)); // months with a start of their own keep it, unless it's now the usual day
 }
+
+/**
+ * Set `out.monthStarts` from `raw`: months with a usable start of their own (well-formed, within the
+ * limits, not the usual day). Returns `out`.
+ */
+function withStarts(out, raw) {
+  const kept = {};
+  if (isObj(raw)) {
+    for (const k of Object.keys(raw).filter(isMonthKey).sort().slice(-MAX_MONTHS)) {
+      const v = raw[k], { min, max } = startLimits(k);
+      if (isDateISO(v) && v >= min && v <= max && v !== usualStart(out, k)) kept[k] = v;
+    }
+  }
+  if (Object.keys(kept).length) out.monthStarts = kept; else delete out.monthStarts;
+  return out;
+}
+
+/**
+ * Month `mk` runs `from` – `to` (when the salary came early or late): sets its own start and the next
+ * month's. Either can be left out to keep it, or null for the usual day. Dated entries move into the
+ * month they now count in. Throws a user-facing Error when a day is out of its limits.
+ */
+export const setMonthDates = (d, mk, dates) => refileDated(withMonthDates(d, mk, dates));
+
+/** setMonthDates without moving anything yet (to preview it: see datedMoves). */
+export function withMonthDates(d, mk, { from, to } = {}) {
+  const starts = { ...(d.monthStarts || {}) };
+  const put = (k, day, what) => {
+    if (day === undefined) return;
+    if (day === null) { delete starts[k]; return; }
+    const { min, max } = startLimits(k);
+    if (!isDateISO(day) || day < min || day > max) throw new Error(`${what} must be between ${dayLabel(what === "Start" ? min : addDays(min, -1))} and ${dayLabel(what === "Start" ? max : addDays(max, -1))}.`);
+    starts[k] = day;
+  };
+  put(mk, from, "Start");
+  put(nextM(mk), to === undefined || to === null ? to : addDays(to, 1), "End");
+  return withStarts({ ...d }, starts); // within the limits a month always ends after it starts
+}
+const dayLabel = (iso) => +iso.slice(8) + " " + mLabel(iso.slice(0, 7)).slice(0, 3);
 
 /* ---------------- mutations (all pure: return a new plan) ---------------- */
 
@@ -323,9 +423,10 @@ export function applyItemChange(d, coll, before, after, scope, mk) {
 /** Remove a line from one month. One-offs are deleted; derived lines are hidden. */
 export function removeLine(d, mk, lineKey) {
   const M = monthOf(d, mk);
-  if (lineKey.startsWith("p:")) { // a part paid another way: "p:<line key>:<payment id>"
+  if (lineKey.startsWith("p:")) { // a part paid another way: "p:<line key>:<payment id>", maybe on a statement of another month
     const cut = lineKey.lastIndexOf(":");
-    return removePayment(d, mk, lineKey.slice(2, cut), lineKey.slice(cut + 1));
+    const part = lines(d, mk).find((l) => l.key === lineKey);
+    return removePayment(d, (part && part.partOf && part.partOf.month) || mk, lineKey.slice(2, cut), lineKey.slice(cut + 1));
   }
   if (lineKey.startsWith("x:")) {
     const id = lineKey.slice(2);

@@ -20,6 +20,7 @@ const HomeRedirect = lazy(() => import("./features/profiles/HomeRedirect"));
 const OnboardingPage = lazy(() => import("./features/profiles/OnboardingPage"));
 const ProfileLayout = lazy(() => import("./features/profiles/ProfileLayout"));
 const MonthPage = lazy(() => import("./features/plan/MonthPage"));
+const BudgetsPage = lazy(() => import("./features/budgets/BudgetsPage"));
 const CommitmentsPage = lazy(() => import("./features/commitments/CommitmentsPage"));
 const SetupPage = lazy(() => import("./features/setup/SetupPage"));
 const HistoryPage = lazy(() => import("./features/history/HistoryPage"));
@@ -73,6 +74,7 @@ export default function App() {
                     <Route path="/p/:profileId" element={<ProfileLayout />}>
                       <Route index element={<Navigate to="month" replace />} />
                       <Route path="month" element={<MonthPage />} />
+                      <Route path="budgets" element={<BudgetsPage />} />
                       <Route path="commitments" element={<CommitmentsPage />} />
                       <Route path="setup" element={<SetupPage />} />
                       <Route path="history" element={<HistoryPage />} />

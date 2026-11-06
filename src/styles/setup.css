@@ -60,3 +60,10 @@
 @media(max-width:520px){ .mstart{padding:12px 14px 14px} }
 
 .sptot{font-size:11.5px;color:var(--mute);padding-top:5px;display:flex;gap:8px;align-items:center;justify-content:space-between}
+/* each month's dates */
+.mlist{margin:6px 0 12px;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden}
+.mlist-h,.mlist-r{display:grid;grid-template-columns:minmax(110px,1fr) minmax(0,1.6fr) auto;gap:10px;align-items:center;padding:7px 12px}
+.mlist-h{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);background:var(--paper)}
+.mlist-r{border-top:1px solid var(--line2);font-size:13px;min-height:40px}
+.mlist-r>span{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
+.mlist-r b{font-weight:600}

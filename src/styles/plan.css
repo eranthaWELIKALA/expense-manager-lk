@@ -10,6 +10,9 @@
 .mnav:hover{background:var(--paper);border-color:var(--faint);color:var(--ink)}
 .mnow{font-family:'Space Grotesk';font-size:22px;font-weight:700;padding:0 6px;min-width:108px;text-align:center;white-space:nowrap}
 .mnow small{display:block;font-family:'Inter',sans-serif;font-size:11px;font-weight:500;color:var(--mute);line-height:1.2}
+.mdates-btn{display:block;margin:0 auto;font-family:'Inter',sans-serif;font-size:11px;font-weight:500;color:var(--acc);line-height:1.2;padding:1px 4px;border-radius:5px}
+.mdates-btn:hover{background:var(--accS)}
+.mdates-btn:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .mpills{display:flex;gap:4px;overflow-x:auto;flex:1;min-width:0;padding:2px 2px 2px 6px;scrollbar-width:none;
   mask-image:linear-gradient(90deg,#000 85%,transparent)}
 .mpills::-webkit-scrollbar{display:none}
@@ -239,3 +242,74 @@
 .crry input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--accS)}
 .cl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--mute);font-weight:600;padding:6px 0 2px}
 
+
+/* ---------- budgets: payments behind a budget or a bill paid in parts ---------- */
+.lbl .tag.link{border:0;font-family:inherit;cursor:pointer;color:var(--acc);background:var(--accS)}
+.lbl .tag.link:hover{text-decoration:underline}
+.lbl .tag.link.over{color:var(--flag);background:var(--flagS)}
+.lbl .tag.link:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.buds{display:flex;flex-direction:column;gap:12px;margin-bottom:18px}
+.buds-h{font-size:15px;font-weight:600;margin:6px 0 0}
+.buds-h .mut{font-weight:400;font-size:12.5px}
+.bud{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:16px 18px;
+  scroll-margin-top:84px;transition:border-color .3s,box-shadow .3s}
+.bud.hl{border-color:var(--accB);box-shadow:0 0 0 3px var(--accS)}
+.bud.compact{background:none;border:none;box-shadow:none;padding:0}
+.bud-h{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center}
+.bud-name{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bud-name h3{font-size:15px;font-weight:600;margin:0}
+.bud-via{font-size:12.5px;color:var(--mute);margin-top:2px}
+.bud-amt{display:flex;flex-direction:column;align-items:flex-end;white-space:nowrap}
+.bud-amt b{font-size:17px;font-weight:600}
+.bud-amt small{font-size:11.5px;color:var(--mute)}
+.bud-body{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:end;margin-top:2px}
+.bud-fig{font-size:13px}
+.bud-fig b{font-size:16px;font-weight:600}
+.bud-meta{font-size:12.5px;color:var(--ink2)}
+.bud-meta.neg{color:var(--flag)}
+.bud-accts{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.bud-accts li{display:inline-flex;align-items:center;gap:7px;padding:2px 10px 2px 2px;border:1px solid var(--line2);border-radius:20px;font-size:12px;background:var(--paper)}
+.bud-accts b{font-size:12px;font-weight:600}
+.bud-f{display:flex;justify-content:flex-end;margin-top:12px}
+/* spending per month: one series, the month on screen in the accent; the tick is that month's budget */
+.bhist{margin:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.bhist-cols{display:flex;align-items:flex-end;gap:6px}
+.bcol{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0 2px;outline:none;cursor:default}
+.bcol-track{position:relative;width:16px;height:46px;display:flex;align-items:flex-end}
+.bcol-track i{display:block;width:100%;background:var(--accB);border-radius:4px 4px 0 0;min-height:2px}
+.bcol.on .bcol-track i{background:var(--acc)}
+.bcol-track b{position:absolute;left:-3px;right:-3px;height:1px;background:var(--mute);transform:translateY(50%)}
+.bcol small{font-size:10px;color:var(--mute);line-height:1}
+.bcol.on small{color:var(--ink);font-weight:600}
+.bcol:focus-visible .bcol-track{outline:2px solid var(--acc);outline-offset:3px;border-radius:4px}
+.bcol[data-tip]:hover::after,.bcol[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;bottom:100%;right:0;margin-bottom:6px;
+  white-space:nowrap;background:var(--ink);color:var(--card);font-size:11.5px;padding:5px 8px;border-radius:6px;z-index:5;pointer-events:none}
+.bhist figcaption{font-size:11px;color:var(--mute)}
+.bpays{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px}
+.bpays th{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);text-align:left;padding:0 8px 6px;border-bottom:1px solid var(--line2)}
+.bpays td{padding:7px 8px;border-bottom:1px solid var(--line2);vertical-align:middle}
+.bpays tr:last-child td{border-bottom:none}
+.bpays th:first-child,.bpays td:first-child{padding-left:0}
+.bpays .r{text-align:right;white-space:nowrap}
+.bpays .dt{white-space:nowrap;color:var(--ink2);width:64px}
+.bpays .who>div{display:flex;align-items:center;gap:9px;min-width:0}
+.bpays .who span{min-width:0}
+.bpays .who b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bpays .who small{display:block;font-size:11.5px;color:var(--mute)}
+.bpays .x{width:30px;padding:0 0 0 4px}
+.bpays .del{opacity:1}
+.bpays-none{font-size:13px;color:var(--mute);margin:14px 0 0}
+.bback{margin-top:12px;padding:9px 12px;background:var(--jadeS);border:1px solid var(--jadeB);border-radius:var(--r)}
+.bback-h{font-size:12.5px;font-weight:600;margin-bottom:3px}
+.bback-h .mut{font-weight:400}
+.bback-r{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:8px;font-size:12.5px;padding:3px 0}
+.bback-r .mut{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:560px){
+  .bud{padding:14px}
+  .bud-h{grid-template-columns:auto minmax(0,1fr);gap:12px}
+  .bud-amt{grid-column:1/-1;flex-direction:row;align-items:baseline;gap:6px}
+  .bud-body{grid-template-columns:1fr;gap:12px}
+  .bhist{align-items:flex-start}
+  .bcol[data-tip]:hover::after,.bcol[data-tip]:focus-visible::after{right:auto;left:0}
+  .bpays .run{display:none}
+}

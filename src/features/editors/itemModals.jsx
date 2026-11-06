@@ -5,8 +5,8 @@ import { N, PAY_DAYS, addDays, dayOfDate, defaultDateIn, dueDateIn, firstMonth, 
 import { validateAmount, validateDate, validateName } from "../../lib/validation";
 import { bankInfo, cardLogoIds, networkInfo } from "../../lib/banks";
 import {
-  BankField, CountField, DateField, InstallmentFields, LogoField, MoneyField, NameField, PaidHowField, PaymentMethodField, TextField,
-  decodeVia, defaultVia, encodeVia, maxDate, minDateFor,
+  AlsoPaidWithField, BankField, CountField, DateField, InstallmentFields, LogoField, MoneyField, NameField, PaidHowField, PaymentMethodField, TextField,
+  decodeAlso, decodeVia, defaultVia, encodeVia, maxDate, minDateFor,
 } from "./fields";
 
 /* Add / edit dialogs for every plan collection.
@@ -168,6 +168,7 @@ export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDele
   const form = useForm(
     {
       name: str(item?.name), amount: str(item?.amount ?? ""), flow: item?.flow || "out", budget: item?.budget ? "budget" : "one", via: item ? encodeVia(item.via) : defaultVia(plan), to: item?.to || "",
+      also: (item?.also || []).map(encodeVia),
       date: item?.startMonth ? dueDateIn(plan, item.startMonth, item.via, item.day) : item ? "" : defaultDateIn(plan, startMonth || firstMonth(plan)),
     },
     (v) => ({
@@ -180,6 +181,8 @@ export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDele
     const next = { ...(item || { id: uid("t"), active: true }), name: v.name.trim(), amount: numOr(v.amount), via: decodeVia(v.via), flow: v.flow };
     if (v.flow === "move") next.to = v.to; else delete next.to;
     if (v.flow === "out" && v.budget === "budget") next.budget = true; else delete next.budget;
+    const also = next.budget ? decodeAlso(v.also, v.via) : [];
+    if (also.length) next.also = also; else delete next.also;
     if (v.date) { next.startMonth = monthFor(plan, next.via, v.date); next.day = dayOfDate(v.date); } else { delete next.startMonth; delete next.day; }
     return onSave(next);
   });
@@ -201,6 +204,7 @@ export function RecurringModal({ plan, item, startMonth, onSave, onClose, onDele
         {form.values.flow === "move" && <BankField plan={plan} form={form} name="to" label="Move into" />}
         <DateField form={form} label="First payment" min={minDateFor(plan)} hint="Its day is used as the due day. Leave empty to include every month." />
       </div>
+      {form.values.flow === "out" && form.values.budget === "budget" && <AlsoPaidWithField plan={plan} form={form} primary={form.values.via} />}
     </FormModal>
   );
 }
@@ -274,6 +278,7 @@ export const describe = {
   },
   templates: (plan, t, viaLabel) => ({
     sub: (t.flow === "move" ? viaLabel(plan, t.via) + " → " + ((plan.banks.find((b) => b.id === t.to) || {}).name || "—") : (t.flow === "in" ? "Receive · " : "") + viaLabel(plan, t.via))
+      + (t.budget && t.also && t.also.length ? " · also " + t.also.map((v) => viaLabel(plan, v).replace(/^\w+ · /, "")).join(", ") : "")
       + (t.budget ? " · budget" : "") + (t.day ? " · due " + ordinal(t.day) : "") + (t.startMonth ? " · from " + mShort(t.startMonth) : ""),
     amount: (t.budget ? "≤ " : "") + fmt(t.amount),
   }),

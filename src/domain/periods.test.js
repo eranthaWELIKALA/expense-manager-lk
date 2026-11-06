@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addOneOff, addTransfer, billsIn, blankMonth, computeMonth, currentMonth, dateInPeriod, defaultDateIn, entryMonth, lines,
   monthFor, monthRange, normalizePlan, periodOf, periodRange, recordPayment, refileDated, setMonthStart,
+  dueDateIn, hasOwnStart, monthStartOf, offCalendar, setMonthDates, startLimits, datedMoves,
 } from "./index";
 
 const OCT = "2026-10", NOV = "2026-11", DEC = "2026-12";
@@ -177,5 +178,75 @@ describe("plans saved before v5", () => {
   it("keep only a valid month start", () => {
     expect(normalizePlan(plan({ monthStart: 40 }))).not.toHaveProperty("monthStart");
     expect(normalizePlan(plan({ monthStart: 5 })).monthStart).toBe(5);
+  });
+});
+
+describe("a month with dates of its own", () => {
+  /* months usually start on the 25th; this time the salary came on 28 Nov, so Dec starts then */
+  const late = () => setMonthDates(plan({ monthStart: 25 }), DEC, { from: "2026-11-28" });
+
+  it("starts on its own day, and the month before ends the day before", () => {
+    const d = late();
+    expect(d.monthStarts).toEqual({ [DEC]: "2026-11-28" });
+    expect(monthRange(d, NOV)).toEqual({ from: "2026-10-25", to: "2026-11-27" });
+    expect(monthRange(d, DEC)).toEqual({ from: "2026-11-28", to: "2026-12-24" });
+    expect(monthFor(d, CASH, "2026-11-27")).toBe(NOV);
+    expect(monthFor(d, BANK, "2026-11-28")).toBe(DEC);
+    expect([hasOwnStart(d, DEC), hasOwnStart(d, NOV), offCalendar(d)]).toEqual([true, false, true]);
+  });
+
+  it("can change where it ends — that's when the next month starts", () => {
+    const d = setMonthDates(plan(), NOV, { to: "2026-12-03" });
+    expect(d.monthStarts).toEqual({ [DEC]: "2026-12-04" });
+    expect(monthRange(d, NOV)).toEqual({ from: "2026-11-01", to: "2026-12-03" });
+    expect(monthFor(d, BANK, "2026-12-02")).toBe(NOV);
+    expect(offCalendar(plan())).toBe(false);
+  });
+
+  it("puts a due day on its date within the month", () => {
+    const d = late();
+    expect(dueDateIn(d, DEC, BANK, 26)).toBe("2026-12-24"); // no 26th in 28 Nov – 24 Dec: its last day
+    expect(dueDateIn(d, DEC, BANK, 5)).toBe("2026-12-05");
+    expect(dueDateIn(d, DEC, BANK, 30)).toBe("2026-11-30");
+    expect(dueDateIn(d, NOV, BANK, 27)).toBe("2026-10-27");
+  });
+
+  it("doesn't change a card's statements", () => {
+    const d = late();
+    expect(monthFor(d, CARD, "2026-11-27")).toBe(monthFor(plan({ monthStart: 25 }), CARD, "2026-11-27"));
+    expect(monthRange(d, DEC, CARD)).toEqual(monthRange(plan(), DEC, CARD));
+  });
+
+  it("moves dated payments into the month they now count in", () => {
+    let d = plan({ monthStart: 25 });
+    d = spend(d, CASH, "2026-11-26", 100, "Bread"); // Dec, while Dec starts on the 25th
+    expect(names(d, DEC)).toEqual(["Bread"]);
+    expect(datedMoves(setMonthDates(d, DEC, { from: "2026-11-25" }))).toEqual([]);
+    const moved = setMonthDates(d, DEC, { from: "2026-11-28" });
+    expect([names(moved, NOV), names(moved, DEC)]).toEqual([["Bread"], []]);
+  });
+
+  it("goes back to the usual day", () => {
+    const d = setMonthDates(late(), DEC, { from: null });
+    expect(d).not.toHaveProperty("monthStarts");
+    expect(monthStartOf(d, DEC)).toBe("2026-11-25");
+    expect(setMonthDates(late(), DEC, { from: "2026-11-25" })).not.toHaveProperty("monthStarts"); // the usual day isn't stored
+  });
+
+  it("stays between the 17th of the month before and the 16th", () => {
+    expect(startLimits(DEC)).toEqual({ min: "2026-11-17", max: "2026-12-16" });
+    expect(() => setMonthDates(plan(), DEC, { from: "2026-11-10" })).toThrow(/between 17 Nov and 16 Dec/);
+    expect(() => setMonthDates(plan(), NOV, { to: "2026-12-20" })).toThrow(/End must be between 16 Nov and 15 Dec/);
+  });
+
+  it("is kept when the usual day changes, unless it's the new usual day", () => {
+    const d = late();
+    expect(setMonthStart(d, 1).monthStarts).toEqual({ [DEC]: "2026-11-28" });
+    expect(setMonthStart(d, 28)).not.toHaveProperty("monthStarts");
+  });
+
+  it("keeps only usable dates on load", () => {
+    const d = normalizePlan(plan({ monthStart: 25, monthStarts: { [DEC]: "2026-11-28", [NOV]: "2026-10-25", "2027-01": "2026-11-01", junk: "x", "2027-02": 5 } }));
+    expect(d.monthStarts).toEqual({ [DEC]: "2026-11-28" });
   });
 });

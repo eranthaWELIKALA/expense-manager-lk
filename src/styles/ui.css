@@ -269,3 +269,25 @@
 .alogos .alogo-net{display:none}
 .alogo-more{background:var(--paper);color:var(--ink2);font-size:11px;font-weight:700}
 .alogo.lg .alogo-net{width:28px;height:18px;right:-8px;bottom:-6px;border-radius:5px}
+
+/* accounts a budget is also paid with (toggle chips) */
+.vchips-f{border:0;padding:0;margin:0 0 14px;min-width:0}
+.vchips-f legend{font-size:12px;font-weight:600;color:var(--ink2);padding:0;margin-bottom:6px}
+.vchips-f legend .mut{font-weight:400}
+.vchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.vchip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border:1px solid var(--line);border-radius:20px;font-size:12.5px;
+  background:var(--card);color:var(--ink2);transition:border-color .15s,background .15s}
+.vchip:hover{border-color:var(--faint)}
+.vchip.on{border-color:var(--accB);background:var(--accS);color:var(--acc);font-weight:600}
+.vchip.on::before{content:"✓";font-size:11px}
+.vchip:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.vchip-k{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);font-weight:600}
+.vchip.on .vchip-k{color:var(--acc)}
+.dlg-left{margin-right:auto}
+@media(max-width:560px){.dlg .f .dlg-left{flex:1 1 100%;margin-right:0}}
+/* month dates dialog: the months around it */
+.mdates div{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
+.mdates div span{color:var(--mute)}
+.mdates div.on{font-weight:600;color:var(--ink)}
+.mdates div.on span{color:var(--ink)}
+.mdates p{margin:6px 0 0;font-size:12px}
