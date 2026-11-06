@@ -8,7 +8,7 @@ import { useViewMonth } from "../../hooks/useViewMonth";
 import {
   computeMonth, fmt, mLabel, mShort, nextM, monthRail,
   N, isPayable, monthRange, monthStartDay, setOverride, markPaid, recordPayment, removePayment, removeLine, addOneOff, addItem, openMonth, rollInto, ensureMonthsThrough, monthsToOpen, dayMonthLabel,
-  addTransfer, payCard, makeReal, withoutMaybes, viaLabel, firstMonth, instType,
+  addTransfer, addMoneyBack, payCard, makeReal, withoutMaybes, viaLabel, firstMonth, instType,
 } from "../../domain";
 import { NewExpenseModal, RecordPaymentModal } from "../editors/ExpenseModal";
 import { TransferModal } from "../editors/TransferModal";
@@ -32,7 +32,7 @@ export default function MonthPage() {
   const { data: plan, update, canEdit } = useProfile();
   const [mk, setMonth] = useViewMonth();
   const [rolling, setRolling] = useState(false);
-  const [adding, setAdding] = useState(null); // "record" | "new" | "maybe" | "transfer" | {payCard: id}
+  const [adding, setAdding] = useState(null); // "record" | "new" | "maybe" | "transfer" | "back" | {payCard: id}
   const [hideMaybes, setHideMaybes] = useState(false); // compare balances without the what-ifs
   const [paying, setPaying] = useState(null); // line key
   const [modal, setModal] = useState(null); // Actions menu: "income" | "edit:<coll>"
@@ -48,6 +48,7 @@ export default function MonthPage() {
     else if (a === "history") navigate("../history");
     else if (a === "move") setRolling(true);
     else if (a === "maybe") setAdding("maybe");
+    else if (a === "back") setAdding("back");
     else setModal(a);
   };
   const toast = useToast();
@@ -99,8 +100,9 @@ export default function MonthPage() {
       }
       if (key.startsWith("tx:") || key.startsWith("ti:")) {
         const ok = await confirm({
-          danger: true, title: `Delete this transfer of ${line ? fmt(line.plan) : "money"}?`,
-          message: "It's removed from both accounts, and balances for this month and later months are recalculated.",
+          danger: true, title: `Delete this ${line && line.refund ? "money back" : "transfer"} of ${line ? fmt(line.plan) : "money"}?`,
+          message: (line && line.outside ? "It's taken out of this account" : "It's removed from both accounts")
+            + (line && line.refund ? ", the payment it was for costs what it did before," : "") + " and balances for this month and later months are recalculated.",
           confirmLabel: "Delete transfer",
         });
         if (!ok) return;
@@ -187,7 +189,7 @@ export default function MonthPage() {
   const allAccounts = [...accounts.banks, ...accounts.wallets, ...accounts.cards];
 
   /* Money moving between accounts (or in from outside), and card payments. */
-  const saveTransfer = async ({ kind, monthKey, from, to, amount, date, note }) => {
+  const saveTransfer = async ({ kind, monthKey, from, to, amount, date, note, forMonth, line }) => {
     if (!(await confirmNewMonths(monthKey, `This is in ${mLabel(monthKey)}, which isn't started yet.`))) return;
     const on = date ? " on " + dayMonthLabel(date) : "";
     const name = (ref) => (ref ? viaLabel(plan, ref).replace(/^(Bank|Cash|Card) · /, "") : "outside");
@@ -198,8 +200,12 @@ export default function MonthPage() {
       const r = result || { toBill: 0, ahead: amount };
       toast.success(r.toBill > 0.005 && r.ahead > 0.005 ? `${fmt(r.toBill)} paid on the bill, ${fmt(r.ahead)} paid ahead.`
         : r.toBill > 0.005 ? `${fmt(r.toBill)} paid on the “${name(to)}” bill.` : `${fmt(r.ahead)} paid ahead on “${name(to)}” — next month's bill goes down.`);
+    } else if (kind === "back") {
+      update((d) => addMoneyBack(ensureMonthsThrough(d, monthKey), monthKey, { to, amount, date, note, forMonth, line }),
+        { label: `Money back ${fmt(amount)} for “${line.label}” (${mShort(forMonth)}) into ${name(to)}${note ? " (" + note + ")" : ""}${on}` });
+      toast.success(`${fmt(amount)} back for “${line.label}” — it's in ${name(to)}` + (monthKey === mk ? "." : ` (in ${mLabel(monthKey)}).`));
     } else {
-      const verb = { cash: "Withdrew cash", deposit: "Deposited", bank: "Transferred", cashin: "Cash received" }[kind] || "Transferred";
+      const verb = { cash: "Withdrew cash", deposit: "Deposited", bank: "Transferred", in: "Received" }[kind] || "Transferred";
       const route = from ? `${name(from)} → ${name(to)}` : `into ${name(to)}`;
       update((d) => addTransfer(ensureMonthsThrough(d, monthKey), monthKey, { from, to, amount, date, note }),
         { label: `${verb} ${fmt(amount)} — ${route}${note ? " (" + note + ")" : ""}${on}` });
@@ -239,10 +245,12 @@ export default function MonthPage() {
       <div className="stats">
         <StatCard highlight label={`Left in ${plan.banks.length} bank${plan.banks.length === 1 ? "" : "s"}`} value={fmt(month.inBank)}
           sub={`${fmt(month.inCash)} cash` + (month.short.length ? ` · ${month.short.length} short` : "")} />
-        <StatCard label="Salaries in" value={fmt(month.earned)}
-          sub={salaries.length ? `${salaries.filter((l) => l.done).length} of ${salaries.length} received` : "No salaries yet"} />
+        <StatCard label={month.otherIn > 0.005 ? "Money in" : "Salaries in"} value={fmt(month.earned + month.otherIn)}
+          sub={(salaries.length ? `${salaries.filter((l) => l.done).length} of ${salaries.length} salaries received` : "No salaries yet")
+            + (month.otherIn > 0.005 ? ` · ${fmt(month.otherIn)} other` : "")} />
         <StatCard label="Spent" value={fmt(month.spent)} subTone={overPlan ? "neg" : "pos"}
-          sub={Math.abs(month.spent - month.planned) < 1 ? "On plan" : `${fmt(Math.abs(month.spent - month.planned))} ${overPlan ? "over" : "under"} plan`}>
+          sub={(month.paidBack > 0.005 ? `${fmt(month.paidBack)} paid back · ` : "")
+            + (Math.abs(month.spent - month.planned) < 1 ? "On plan" : `${fmt(Math.abs(month.spent - month.planned))} ${overPlan ? "over" : "under"} plan`)}>
           <div className="route" role="img" aria-label={`Direct ${fmt(month.spentDirect)}, cash ${fmt(month.spentCash)}, card ${fmt(month.spentCard)}`}>
             <i className="d" style={{ width: pct(month.spentDirect) }} /><i className="c" style={{ width: pct(month.spentCash) }} /><i className="k" style={{ width: pct(month.spentCard) }} />
           </div>
@@ -320,7 +328,7 @@ export default function MonthPage() {
 
       {adding === "record" && <RecordPaymentModal plan={plan} monthKey={mk} onSave={saveExpense} onRemovePart={removePart} onClose={() => setAdding(null)} />}
       {(adding === "new" || adding === "maybe") && <NewExpenseModal plan={plan} monthKey={mk} initialType={adding === "maybe" ? "maybe" : "monthly"} onSave={saveExpense} onClose={() => setAdding(null)} />}
-      {adding === "transfer" && <TransferModal plan={plan} monthKey={mk} onSave={saveTransfer} onClose={() => setAdding(null)} />}
+      {(adding === "transfer" || adding === "back") && <TransferModal plan={plan} monthKey={mk} initialKind={adding === "back" ? "back" : "cash"} onSave={saveTransfer} onClose={() => setAdding(null)} />}
       {adding && adding.payCard && <TransferModal plan={plan} monthKey={mk} initialKind="card" initialTo={"card|" + adding.payCard} onSave={saveTransfer} onClose={() => setAdding(null)} />}
       {modal === "income" && <IncomeReceivedModal plan={plan} monthKey={mk} onSave={saveIncome} onClose={() => setModal(null)} />}
       {editColl && (

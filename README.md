@@ -7,6 +7,7 @@ It has these features:
 - **Accounts:** sign up, sign in, password reset, and account settings.
 - **Profiles:** one account can hold many profiles. Each profile is a separate money plan (for example a household, a business or a parent's accounts), and you switch between them from the top bar.
 - **Months that follow your pay:** in **Setup → Month start**, pick the day your salary usually lands. Bank and cash payments made before that day count in the previous month, because that's whose money paid for them. A card with a statement date follows its statements instead, so each charge counts in the month of the statement it's on. When the start day or a statement date changes, payments that are already recorded move to the month they now count in. You can undo the change from History.
+- **Money back and other income:** use **Move money → Money back** to record a refund, an insurance claim or someone paying you back. You link it to the payment it's for. That payment's month then shows what it really cost, and the money lands in the bank, cash pot or card it went back into. A refund onto a card lowers that card's statement. Money that isn't for a payment, such as a gift or a sale, goes under **Money in** and counts as other income.
 - **Sharing:** the owner of a profile invites partners by email as an **editor** or a **viewer**. Invitees accept from a link or from their Invitations page. Owners can change roles, remove people, revoke invitations and see an activity log.
 
 ## Quick start

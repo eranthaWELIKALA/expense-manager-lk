@@ -13,7 +13,7 @@
    object, so results are memoised per data object via WeakMap.
    ============================================================ */
 
-import { MONTH_NAMES, prevM, nextM, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, dateInMonth, dateInPeriod, todayISO, addDays } from "./months";
+import { MONTH_NAMES, prevM, nextM, mDiff, ordinal, dayOfDate, dayMonthLabel, isDateISO, isMonthKey, dateInMonth, dateInPeriod, todayISO, addDays } from "./months";
 import { N, fmt } from "./format";
 import { instFor, instPaid, instType } from "./installments";
 import { versionAt } from "./versions";
@@ -22,8 +22,12 @@ import { cutoffFor, dueDateIn, monthFor, monthRange, payDays, stmtDay } from "./
 export const blankMonth = () => ({ ov: {}, extra: [], transfers: [], adjust: {} });
 
 /* Recorded money movements between your own accounts (or in from outside), per month:
-   M.transfers = [{id, from: {kind, id} | null (money from outside), to: {kind, id}, amount, date?, note?}]
-   Each shows as a line in both accounts and is settled as soon as it's recorded. */
+   M.transfers = [{id, from: {kind, id} | null (money from outside), to: {kind, id}, amount, date?, note?,
+                   for?: {month, key, label}}]
+   Each shows as a line in both accounts and is settled as soon as it's recorded.
+   Money from outside with `for` is money back (a refund, an insurance claim, someone paying you back)
+   for the payment with line key `key` in `month`: it lowers what that payment cost. Without `for`
+   it's other income. */
 
 /** Name of a bank / cash pot / card. */
 const accountName = (d, ref) => {
@@ -34,6 +38,7 @@ const accountName = (d, ref) => {
 
 /** How a transfer reads, from each side. */
 export function transferLabels(d, t) {
+  if (!t.from && t.for) { const head = t.note || "Money back"; return { out: head, in: head + " · for " + t.for.label }; }
   const from = t.from ? t.from.kind : null, to = t.to.kind;
   const verb = !from ? "Money in" : to === "card" ? "Card payment"
     : from === "bank" && to === "cash" ? "Cash withdrawn" : from === "cash" && to === "bank" ? "Cash deposited" : "Transfer";
@@ -52,6 +57,26 @@ export const val = (l) => (l.eff !== undefined ? l.eff : l.actual !== null && l.
 
 const sum = (ps) => ps.reduce((s, p) => s + N(p.amount), 0);
 const joinTags = (...t) => t.filter(Boolean).join(" · ") || null;
+
+/** Money back recorded for payments in month `key`: line key → amount (null when there's none). Memoised per plan. */
+const BK = new WeakMap();
+function paidBackIn(d, key) {
+  let ix = BK.get(d);
+  if (!ix) {
+    ix = new Map();
+    for (const M of Object.values(d.months || {})) {
+      for (const t of (M && M.transfers) || []) {
+        const f = t && !t.from && t.for;
+        if (!f || !isMonthKey(f.month) || typeof f.key !== "string" || !(N(t.amount) > 0)) continue;
+        const m = ix.get(f.month) || new Map();
+        m.set(f.key, (m.get(f.key) || 0) + N(t.amount));
+        ix.set(f.month, m);
+      }
+    }
+    BK.set(d, ix);
+  }
+  return ix.get(key) || null;
+}
 
 const LC = new WeakMap(), LCN = new WeakMap();
 export function lines(d, key) {
@@ -190,10 +215,31 @@ function computeLines(d, key, withBills) {
       day: dated ? dayOfDate(t.date) : null, date: dated ? t.date : null };
     const label = transferLabels(d, t);
     if (t.from) push({ key: "tx:" + t.id, label: label.out, kind: t.from.kind, id: t.from.id, flow: "out", ...at });
-    push({ key: "ti:" + t.id, label: label.in, kind: t.to.kind, id: t.to.id, flow: "in", ...at });
+    push({ key: "ti:" + t.id, label: label.in, kind: t.to.kind, id: t.to.id, flow: "in", ...at,
+      ...(t.from ? {} : { outside: true, ...(t.for ? { refund: true } : {}) }) }); // from outside: money back, or other income
   });
 
+  /* money back for this month's payments, wherever it landed */
+  const back = paidBackIn(d, key);
+  if (back) {
+    out.forEach((l) => {
+      const b = l.flow === "out" && back.get(l.key);
+      if (b) { l.back = b; l.tag = joinTags(l.tag, fmt(b) + " paid back"); }
+    });
+  }
+
   return out;
+}
+
+/**
+ * Payments money can come back for: spending that's been paid (or charged to a card) in the latest
+ * `count` opened months up to `upTo`, newest first. Each carries its `month`.
+ */
+export function paidSpending(d, upTo, count = 12) {
+  return Object.keys(d.months).filter((k) => k <= upTo).sort().reverse().slice(0, count)
+    .flatMap((k) => lines(d, k)
+      .filter((l) => isSpend(l) && !l.maybe && l.origin !== "part" && (l.done || N(l.paid) > 0 || l.kind === "card"))
+      .map((l) => ({ ...l, month: k })));
 }
 
 /* ---------------- card statements ----------------
@@ -370,10 +416,13 @@ function doMonth(d, key, depth) {
   const spentCash = ls.filter((l) => l.kind === "cash" && isSpend(l)).reduce((s, l) => s + val(l), 0);
   const spentCard = cards.reduce((s, c) => s + c.charged, 0);
   const planned = ls.filter(isSpend).reduce((s, l) => s + N(l.plan), 0);
+  // money back lowers what this month's payments cost (never below nothing); other money in is income
+  const paidBack = ls.filter((l) => isSpend(l) && l.back && !l.maybe).reduce((s, l) => s + Math.min(l.back, Math.max(0, val(l))), 0);
+  const otherIn = ls.filter((l) => l.outside && !l.refund && l.flow === "in").reduce((s, l) => s + val(l), 0);
 
   return {
-    ls, banks, wallets, cards, earned, spentDirect, spentCash, spentCard, planned,
-    spent: spentDirect + spentCash + spentCard,
+    ls, banks, wallets, cards, earned, otherIn, spentDirect, spentCash, spentCard, planned, paidBack,
+    spent: spentDirect + spentCash + spentCard - paidBack, // what this month's spending really cost
     inBank: banks.reduce((s, b) => s + b.closing, 0),
     inCash: wallets.reduce((s, w) => s + w.closing, 0),
     billsNext: cards.reduce((s, c) => s + c.due, 0),

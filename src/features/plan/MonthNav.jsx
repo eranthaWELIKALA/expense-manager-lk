@@ -5,7 +5,7 @@ import { dayMonthLabel, mLabel, mShort, nextM, prevM } from "../../domain";
 /**
  * Month rail: prev/next, a pill per opened month, record payment, new expense and the "more" menu.
  * `range` ({from, to}): the month's first and last day, shown when months don't follow the calendar.
- * onAction(name): "income" | "maybe" | "edit:templates" | "edit:incomes" | "edit:installments" | "undo" | "history" | "move"
+ * onAction(name): "income" | "back" | "maybe" | "edit:templates" | "edit:incomes" | "edit:installments" | "undo" | "history" | "move"
  */
 export function MonthNav({ value, range, items, openedMonths, onSelect, onRecord, onNewExpense, onTransfer, onAction, canEdit }) {
   const pillsRef = useRef(null);
@@ -50,6 +50,7 @@ export function MonthNav({ value, range, items, openedMonths, onSelect, onRecord
           )}>
             <MenuLabel>Record</MenuLabel>
             <MenuItem onClick={() => onAction("income")}><span className="mi" aria-hidden>↓</span>Record income received…</MenuItem>
+            <MenuItem onClick={() => onAction("back")}><span className="mi" aria-hidden>↺</span>Record money back (refund, claim)…</MenuItem>
             <MenuItem onClick={() => onAction("maybe")}><span className="mi" aria-hidden>?</span>What if… (check a payment fits)</MenuItem>
             <MenuDivider />
             <MenuLabel>Change</MenuLabel>

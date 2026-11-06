@@ -377,14 +377,23 @@ export function withoutMaybes(d) {
 /**
  * Record money moving between your accounts, or in from outside (`from` null).
  * from/to: {kind: "bank"|"cash"|"card", id}. Settled at once.
+ * `for` ({month, key, label}, money from outside only): the payment it's money back for (see ledger.js).
  */
-export function addTransfer(d, mk, { from, to, amount, date, note }) {
+export function addTransfer(d, mk, { from, to, amount, date, note, for: link }) {
   const M = monthOf(d, mk);
   const t = { id: uid("tr"), from: from && from.kind && from.id ? { kind: from.kind, id: from.id } : null, to: { kind: to.kind, id: to.id }, amount };
   if (isDateISO(date)) t.date = date;
   if (note && String(note).trim()) t.note = String(note).trim().slice(0, 80);
+  if (!t.from && link && isMonthKey(link.month) && typeof link.key === "string") t.for = { month: link.month, key: link.key, label: String(link.label || "").slice(0, 120) };
   return withMonth(d, mk, { ...M, transfers: [...(M.transfers || []), t] });
 }
+
+/**
+ * Record money back for a payment — a refund, an insurance claim, someone paying you back. It lands in
+ * `to` (a bank, cash pot or card) in month `mk`, and lowers what `line` (a payment in `forMonth`) cost.
+ */
+export const addMoneyBack = (d, mk, { to, amount, date, note, forMonth, line }) =>
+  addTransfer(d, mk, { from: null, to, amount, date, note, for: { month: forMonth, key: line.key, label: line.label } });
 
 /**
  * Pay a card from a bank: settles what's left of this month's card bill first

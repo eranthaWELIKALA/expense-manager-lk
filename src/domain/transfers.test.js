@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDays, addOneOff, addTransfer, billsIn, entryMonth, cardCycleDates, statementName, blankMonth, computeMonth, currentMonthKey, lines, makeReal, markPaid, nextM, normalizePlan, payCard, prevM, removeLine, withoutMaybes,
+  addDays, addMoneyBack, addOneOff, addTransfer, billsIn, entryMonth, paidSpending, cardCycleDates, statementName, blankMonth, computeMonth, currentMonthKey, lines, makeReal, markPaid, nextM, normalizePlan, payCard, prevM, removeLine, withoutMaybes,
 } from "./index";
 
 /* Aug: card c1 is charged Food 300 + TV 100 = 400, billed to b1 in Sep. */
@@ -192,5 +192,57 @@ describe("card installments ahead", () => {
     const d = live({});
     d.installments = [{ ...d.installments[0], startMonth: nextM(N0) }];
     expect(card(computeMonth(d, N0), "c1").instAhead).toBe(1200);
+  });
+});
+
+describe("money back", () => {
+  const B1 = { kind: "bank", id: "b1" };
+  /** Aug: a 50,000 hospital bill paid from Main. */
+  const billed = () => addOneOff(plan(), AUG, { kind: "bank", targetId: "b1", name: "Hospital", amount: 50000, date: "2026-08-10", paid: true });
+  const hospital = (d) => lines(d, AUG).find((l) => l.label === "Hospital");
+  const back = (d, amount, extra = {}) =>
+    addMoneyBack(d, SEP, { to: B1, amount, date: "2026-09-05", note: "Insurance", forMonth: AUG, line: hospital(d), ...extra });
+
+  it("lowers what the payment cost in its own month; the money lands when it comes back", () => {
+    const d = billed(), aug = computeMonth(d, AUG), sep = computeMonth(d, SEP);
+    const r = back(d, 40000);
+    expect(computeMonth(r, AUG)).toMatchObject({ spent: aug.spent - 40000, paidBack: 40000 });
+    expect(hospital(r)).toMatchObject({ back: 40000, tag: expect.stringContaining("40,000.00 paid back") });
+    expect(bank(computeMonth(r, AUG), "b1").closing).toBe(bank(aug, "b1").closing); // not there yet in Aug
+    const s = computeMonth(r, SEP);
+    expect(bank(s, "b1").closing).toBe(bank(sep, "b1").closing + 40000);
+    expect(s).toMatchObject({ spent: sep.spent, otherIn: 0, earned: sep.earned });
+    expect(s.ls.find((l) => l.refund)).toMatchObject({ label: "Insurance · for Hospital", kind: "bank", flow: "in", done: true });
+  });
+
+  it("never brings a payment's cost below nothing", () => {
+    expect(computeMonth(back(billed(), 60000), AUG).paidBack).toBe(50000);
+  });
+
+  it("comes off again when it's deleted", () => {
+    const d = billed(), r = back(d, 40000);
+    const key = computeMonth(r, SEP).ls.find((l) => l.refund).key;
+    expect(computeMonth(removeLine(r, SEP, key), AUG).spent).toBe(computeMonth(d, AUG).spent);
+  });
+
+  it("onto a card, lowers the statement it lands on", () => {
+    const d = plan(); // Aug: Food 300 + TV 100 on the card, billed in Sep
+    const food = lines(d, AUG).find((l) => l.key === "t:t2");
+    const r = addMoneyBack(d, AUG, { to: { kind: "card", id: "c1" }, amount: 100, date: "2026-08-20", forMonth: AUG, line: food });
+    expect(lines(r, SEP).find((l) => l.key === "b:c1").plan).toBe(300);
+    expect(computeMonth(r, AUG).spent).toBe(computeMonth(d, AUG).spent - 100);
+  });
+
+  it("is offered for spending that's been paid or charged", () => {
+    const offered = paidSpending(billed(), SEP);
+    const options = offered.map((l) => [l.month, l.label]);
+    expect(options).toContainEqual([AUG, "Hospital"]);
+    expect(options).toContainEqual([AUG, "Food"]); // on a card: charged
+    expect(offered.some((l) => l.origin === "salary" || l.origin === "withdrawal" || l.origin === "bill")).toBe(false);
+  });
+
+  it("money in that isn't for a payment is other income", () => {
+    const d = addTransfer(plan(), AUG, { from: null, to: { kind: "bank", id: "b2" }, amount: 500, note: "Sold the bike" });
+    expect(computeMonth(d, AUG)).toMatchObject({ otherIn: 500, earned: computeMonth(plan(), AUG).earned, spent: computeMonth(plan(), AUG).spent });
   });
 });
